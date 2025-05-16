@@ -1,5 +1,5 @@
 from app import ma
-from app.models import User, Document
+from app.models import Process, User, Document
 
 class UserSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
@@ -9,4 +9,9 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
 class DocumentSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Document
+        load_instance = True
+
+class ProcessSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = Process
         load_instance = True

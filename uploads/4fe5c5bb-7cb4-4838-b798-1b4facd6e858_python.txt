@@ -1,2 +1,0 @@
-pip gestore dipendenze python
-	pip install -r requirements.txt
