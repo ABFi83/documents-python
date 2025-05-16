@@ -121,26 +121,50 @@ def download(doc_id):
 def extract_info_from_text(process: Process,text):
     """Estrapola informazioni specifiche dal testo."""
     info = {}
+    try:
+        # Esempio: Trova una data
+        date_match = re.search(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b', text)
+        if date_match:
+            info['date'] = date_match.group(0)
 
-    # # Esempio: Trova un'email
-    # email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
-    # if email_match:
-    #     info['email'] = email_match.group(0)
+        # Esempio: Trova un indirizzo email
+        email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+        if email_match:
+            info['email'] = email_match.group(0)
 
-    # # Esempio: Trova un numero di telefono
-    # phone_match = re.search(r'\+?\d[\d\s()-]{7,}', text)
-    # if phone_match:
-    #     info['phone'] = phone_match.group(0)
+        # Esempio: Trova un numero di telefono
+        phone_match = re.search(r'\+?\d[\d\s()-]{7,}', text)
+        if phone_match:
+            info['phone'] = phone_match.group(0)
 
-    # # Esempio: Trova un nome (puoi personalizzare il pattern)
-    # name_match = re.search(r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b', text)
-    # if name_match:
-    #     info['name'] = name_match.group(0)
+        # Esempio: Trova un nome (puoi personalizzare il pattern)
+        name_match = re.search(r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b', text)
+        if name_match:
+            info['name'] = name_match.group(0)  
+        # # Esempio: Trova un'email
+        email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+        if email_match:
+            info['email'] = email_match.group(0)
 
-    # Aggiungi altre estrazioni personalizzate qui
-    logging.debug(f"Process: {process.id}, User ID: {process.user_id}")
-    process.end_end_time = datetime.now()
-    process.status = ProcessStatus.COMPLETED
+        # Esempio: Trova un numero di telefono
+        phone_match = re.search(r'\+?\d[\d\s()-]{7,}', text)
+        if phone_match:
+            info['phone'] = phone_match.group(0)
+
+        # Esempio: Trova un nome (puoi personalizzare il pattern)
+        name_match = re.search(r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b', text)
+        if name_match:
+            info['name'] = name_match.group(0)
+
+        # Aggiungi altre estrazioni personalizzate qui
+        logging.debug(f"Process: {process.id}, User ID: {process.user_id}")
+        process.status = ProcessStatus.COMPLETED
+    except Exception as e:
+        logging.error(f"Error extracting info: {str(e)}")
+        process.status = ProcessStatus.ERROR
+        process.error_message = str(e)
+        info['error'] = 'Error extracting information'
+    process.end_end_time = datetime.now()    
     db.session.add(process)
     
     db.session.commit()

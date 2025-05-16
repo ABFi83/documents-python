@@ -1,15 +1,10 @@
-from flask import Blueprint, logging, request, jsonify, send_from_directory, current_app
+from flask import Blueprint, request, jsonify, send_from_directory, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from app.models import Document, Process, ProcessStatus
-from app.schemas import DocumentSchema, ProcessSchema
+from app.models import Process
+from app.schemas import  ProcessSchema
 from flasgger import swag_from
-import os
-import uuid
-import logging
 from werkzeug.utils import safe_join
-import re
-import PyPDF2  # Assicurati di installare questa libreria: pip install PyPDF2
 from threading import Thread
 
 # Configura il logging

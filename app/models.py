@@ -7,6 +7,7 @@ class ProcessStatus(enum.Enum):
     PENDING = 'pending'
     IN_PROGRESS = 'in_progress'
     COMPLETED = 'completed'
+    ERROR = 'error'
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -32,3 +33,4 @@ class Process(db.Model):
     status = db.Column(Enum(ProcessStatus), default=ProcessStatus.PENDING)  # Use Enum for status
     start_end = db.Column(db.DateTime, default=datetime.utcnow)
     end_end = db.Column(db.DateTime, nullable=True)
+    error_message = db.Column(db.String(200), nullable=True)

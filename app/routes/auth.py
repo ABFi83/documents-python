@@ -38,18 +38,3 @@ def login():
         token = generate_token(user.id)
         return jsonify(access_token=token)
     return jsonify({'msg': 'Bad credentials'}), 401
-
-@auth_bp.route('/user', methods=['POST'])
-@swag_from({
-    'tags': ['Auth'],
-    'parameters': [{'name': 'body', 'in': 'body', 'schema': {'username': 'str', 'password': 'str'}}],
-    'responses': {200: {'description': 'Token returned'}}
-})
-def user_login():  # Renamed to avoid conflict
-    logging.debug("User login attempt")
-    data = request.json
-    user = User.query.filter_by(username=data['username']).first()
-    if user and check_password_hash(user.password, data['password']):
-        token = generate_token(user.id)
-        return jsonify(access_token=token)
-    return jsonify({'msg': 'Bad credentials'}), 401
