@@ -15,6 +15,7 @@ import PyPDF2  # Assicurati di installare questa libreria: pip install PyPDF2
 from threading import Thread
 import spacy
 import re
+from app.services.extract_service import extract_info_from_text
 # Configura il logging
 
 doc_bp = Blueprint('documents', __name__)
@@ -118,105 +119,3 @@ def download(doc_id):
         filename=file_name,  # Usa 'filename' invece di 'path'
         as_attachment=True
     )
-
-
-def extract_info_from_text(process, text: str):
-    info = {
-        "nome": None,
-        "cognome": None,
-        "linguaggi": [],
-        "frameworks": [],
-        "esperienze": []
-    }
-
-    try:
-        user = User.query.get(process.user_id)
-        if not user:
-            raise ValueError("Utente non trovato")
-
-        doc = nlp(text)
-
-        # === 1. Nome e Cognome (prima entità PERSON) ===
-        for ent in doc.ents:
-            if ent.label_ == "PER":
-                nome_cognome = ent.text.strip().split()
-                if len(nome_cognome) >= 2:
-                    info["nome"] = nome_cognome[0]
-                    info["cognome"] = " ".join(nome_cognome[1:])
-                elif len(nome_cognome) == 1:
-                    info["nome"] = nome_cognome[0]
-                break
-
-        if info["nome"]:
-            user.name = info["nome"]
-        if info["cognome"]:
-            user.surname = info["cognome"]
-
-        # === 2. Skill Tecniche: regex su sezione COMPETENZE TECNICHE ===
-        # Regex migliorata: prende tutto tra COMPETENZE TECNICHE e la prossima sezione in maiuscolo o una delle parole chiave
-        skill_section = re.search(
-            r'COMPETENZE[\s_-]?TECNICHE[\s\n\r:]*([\s\S]*?)(?:\n[A-Z][A-Z\s]{3,}|ISTRUZIONE|FORMAZIONE|PROGETTI|ESPERIENZE|$)',
-            text
-        )
-        if skill_section:
-            skills_text = skill_section.group(1)
-
-            linguaggi = re.findall(r'\b(Java|Python|JavaScript|SQL|C\+\+|C#|PHP|HTML|CSS)\b', skills_text, re.IGNORECASE)
-            frameworks = re.findall(r'\b(Spring Boot|Angular|React|Vue\.js|Django|Laravel|.NET|Node\.js|Google Suite)\b', skills_text, re.IGNORECASE)
-
-            info["linguaggi"] = list(set(map(str.capitalize, linguaggi)))
-            info["frameworks"] = list(set(map(str.strip, frameworks)))
-            
-        logging.debug(f"Skill Section Estratta: {skills_text if skill_section else 'Nessuna'}")
-        logging.debug(f"Skill Linguaggi: {info['linguaggi']}")
-        logging.debug(f"Skill Frameworks: {info['frameworks']}")
-        if info["linguaggi"]:
-            for lang in info["linguaggi"]:
-                skill = Skill(name=lang, level=None, user_id=user.id)
-                db.session.add(skill)
-        if info["frameworks"]:            
-            for fw in info["frameworks"]:
-                skill = Skill(name=fw, level=None, user_id=user.id)
-                db.session.add(skill)
-
-        # === 3. Esperienze: abbina ORG + ruoli noti ===
-        aziende = [ent.text.strip() for ent in doc.ents if ent.label_ == "ORG"]
-        ruoli = re.findall(r'(Technical Lead|Team Leader|Software Developer|Solution Engineer)', text, re.IGNORECASE)
-
-        for i in range(min(len(aziende), len(ruoli))):
-            info["esperienze"].append({
-                "azienda": aziende[i],
-                "ruolo": ruoli[i].title()
-            })
-
-        # Salvataggio esperienze lavorative
-        if info["esperienze"]:
-            from app.models import Experience
-            ##for exp in info["esperienze"]:
-               ## experience = Experience(
-                    ##company_name=exp["azienda"],
-                   ## role=exp["ruolo"],
-                   ## start_date=None,  # Da estrarre se disponibile
-                   ## end_date=None,    # Da estrarre se disponibile
-                  ##  description=None, # Da estrarre se disponibile
-                 ##   user_id=user.id
-               ## )
-                ##db.session.add(experience)
-
-        process.status = ProcessStatus.COMPLETED
-
-    except Exception as e:
-        logging.error(f"[Estrazione fallita] {str(e)}")
-        process.status = ProcessStatus.ERROR
-        process.error_message = str(e)
-        info['error'] = str(e)
-
-    process.end_end_time = datetime.now()
-    db.session.add(process)
-    ##db.session.add(skill)
-    db.session.add(user)
-    ##db.session.add(experience)
-    db.session.commit()
-
-    logging.debug(f"[Estrazione completata] Process ID: {process.id} - Info: {info}")
-    return info

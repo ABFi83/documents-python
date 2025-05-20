@@ -17,9 +17,9 @@ process_schema = ProcessSchema()
 @proc_bp.route('/<int:process_id>', methods=['GET'])
 @jwt_required()
 @swag_from({
-    'tags': ['Documents'],
+    'tags': ['Process'],
     'parameters': [],
-    'responses': {200: {'description': 'File uploaded and analyzed'}}
+    'responses': {200: {'description': 'Process retrieved'}}
 })
 def get_process(process_id):
     user_id = get_jwt_identity()
@@ -27,3 +27,15 @@ def get_process(process_id):
     if not process:
         return jsonify({'msg': 'Process not found'}), 404
     return process_schema.jsonify(process), 202
+
+@proc_bp.route('', methods=['GET'])
+@jwt_required()
+@swag_from({
+    'tags': ['Process'],
+    'parameters': [],
+    'responses': {200: {'description': 'Processes retrieved'}}
+})
+def get_all_processes():
+    user_id = get_jwt_identity()
+    processes = Process.query.filter_by(user_id=user_id).order_by(Process.id.desc()).all()
+    return jsonify([process_schema.dump(p) for p in processes]), 200

@@ -33,8 +33,8 @@ class Process(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     status = db.Column(Enum(ProcessStatus), default=ProcessStatus.PENDING)  # Use Enum for status
-    start_end = db.Column(db.DateTime, default=datetime.utcnow)
-    end_end = db.Column(db.DateTime, nullable=True)
+    start_date = db.Column(db.DateTime, default=datetime.utcnow)
+    end_date = db.Column(db.DateTime, nullable=True)
     error_message = db.Column(db.String(200), nullable=True)
 
 class Skill(db.Model):
@@ -46,8 +46,8 @@ class Skill(db.Model):
 class Experience(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_name = db.Column(db.String(200), nullable=False)
-    role = db.Column(db.String(100), nullable=False)
-    start_date = db.Column(db.DateTime, nullable=False)
+    role = db.Column(db.String(100), nullable=True)
+    start_date = db.Column(db.DateTime, nullable=True)
     end_date = db.Column(db.DateTime, nullable=True)
     description = db.Column(db.Text, nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
