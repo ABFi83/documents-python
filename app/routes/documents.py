@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import Blueprint, logging, request, jsonify, send_from_directory, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from app.models import Document, Process, ProcessStatus
+from app.models import Document, Process, ProcessStatus, User, Skill
 from app.schemas import DocumentSchema, ProcessSchema
 from flasgger import swag_from
 import os
@@ -13,14 +13,15 @@ from werkzeug.utils import safe_join
 import re
 import PyPDF2  # Assicurati di installare questa libreria: pip install PyPDF2
 from threading import Thread
-
+import spacy
+import re
 # Configura il logging
 
 doc_bp = Blueprint('documents', __name__)
 document_schema = DocumentSchema()
 documents_schema = DocumentSchema(many=True)
 process_schema = ProcessSchema()
-
+nlp = spacy.load("it_core_news_sm")
 
 @doc_bp.route('', methods=['POST'])
 @jwt_required()
@@ -30,6 +31,7 @@ process_schema = ProcessSchema()
     'responses': {200: {'description': 'File uploaded and analyzed'}}
 })
 def upload():
+    
     user_id = get_jwt_identity()
     title = request.form['title']
     metadata = request.form['metadata']
@@ -118,55 +120,103 @@ def download(doc_id):
     )
 
 
-def extract_info_from_text(process: Process,text):
-    """Estrapola informazioni specifiche dal testo."""
-    info = {}
+def extract_info_from_text(process, text: str):
+    info = {
+        "nome": None,
+        "cognome": None,
+        "linguaggi": [],
+        "frameworks": [],
+        "esperienze": []
+    }
+
     try:
-        # Esempio: Trova una data
-        date_match = re.search(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b', text)
-        if date_match:
-            info['date'] = date_match.group(0)
+        user = User.query.get(process.user_id)
+        if not user:
+            raise ValueError("Utente non trovato")
 
-        # Esempio: Trova un indirizzo email
-        email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
-        if email_match:
-            info['email'] = email_match.group(0)
+        doc = nlp(text)
 
-        # Esempio: Trova un numero di telefono
-        phone_match = re.search(r'\+?\d[\d\s()-]{7,}', text)
-        if phone_match:
-            info['phone'] = phone_match.group(0)
+        # === 1. Nome e Cognome (prima entità PERSON) ===
+        for ent in doc.ents:
+            if ent.label_ == "PER":
+                nome_cognome = ent.text.strip().split()
+                if len(nome_cognome) >= 2:
+                    info["nome"] = nome_cognome[0]
+                    info["cognome"] = " ".join(nome_cognome[1:])
+                elif len(nome_cognome) == 1:
+                    info["nome"] = nome_cognome[0]
+                break
 
-        # Esempio: Trova un nome (puoi personalizzare il pattern)
-        name_match = re.search(r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b', text)
-        if name_match:
-            info['name'] = name_match.group(0)  
-        # # Esempio: Trova un'email
-        email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
-        if email_match:
-            info['email'] = email_match.group(0)
+        if info["nome"]:
+            user.name = info["nome"]
+        if info["cognome"]:
+            user.surname = info["cognome"]
 
-        # Esempio: Trova un numero di telefono
-        phone_match = re.search(r'\+?\d[\d\s()-]{7,}', text)
-        if phone_match:
-            info['phone'] = phone_match.group(0)
+        # === 2. Skill Tecniche: regex su sezione COMPETENZE TECNICHE ===
+        # Regex migliorata: prende tutto tra COMPETENZE TECNICHE e la prossima sezione in maiuscolo o una delle parole chiave
+        skill_section = re.search(
+            r'COMPETENZE[\s_-]?TECNICHE[\s\n\r:]*([\s\S]*?)(?:\n[A-Z][A-Z\s]{3,}|ISTRUZIONE|FORMAZIONE|PROGETTI|ESPERIENZE|$)',
+            text
+        )
+        if skill_section:
+            skills_text = skill_section.group(1)
 
-        # Esempio: Trova un nome (puoi personalizzare il pattern)
-        name_match = re.search(r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b', text)
-        if name_match:
-            info['name'] = name_match.group(0)
+            linguaggi = re.findall(r'\b(Java|Python|JavaScript|SQL|C\+\+|C#|PHP|HTML|CSS)\b', skills_text, re.IGNORECASE)
+            frameworks = re.findall(r'\b(Spring Boot|Angular|React|Vue\.js|Django|Laravel|.NET|Node\.js|Google Suite)\b', skills_text, re.IGNORECASE)
 
-        # Aggiungi altre estrazioni personalizzate qui
-        logging.debug(f"Process: {process.id}, User ID: {process.user_id}")
+            info["linguaggi"] = list(set(map(str.capitalize, linguaggi)))
+            info["frameworks"] = list(set(map(str.strip, frameworks)))
+            
+        logging.debug(f"Skill Section Estratta: {skills_text if skill_section else 'Nessuna'}")
+        logging.debug(f"Skill Linguaggi: {info['linguaggi']}")
+        logging.debug(f"Skill Frameworks: {info['frameworks']}")
+        if info["linguaggi"]:
+            for lang in info["linguaggi"]:
+                skill = Skill(name=lang, level=None, user_id=user.id)
+                db.session.add(skill)
+        if info["frameworks"]:            
+            for fw in info["frameworks"]:
+                skill = Skill(name=fw, level=None, user_id=user.id)
+                db.session.add(skill)
+
+        # === 3. Esperienze: abbina ORG + ruoli noti ===
+        aziende = [ent.text.strip() for ent in doc.ents if ent.label_ == "ORG"]
+        ruoli = re.findall(r'(Technical Lead|Team Leader|Software Developer|Solution Engineer)', text, re.IGNORECASE)
+
+        for i in range(min(len(aziende), len(ruoli))):
+            info["esperienze"].append({
+                "azienda": aziende[i],
+                "ruolo": ruoli[i].title()
+            })
+
+        # Salvataggio esperienze lavorative
+        if info["esperienze"]:
+            from app.models import Experience
+            ##for exp in info["esperienze"]:
+               ## experience = Experience(
+                    ##company_name=exp["azienda"],
+                   ## role=exp["ruolo"],
+                   ## start_date=None,  # Da estrarre se disponibile
+                   ## end_date=None,    # Da estrarre se disponibile
+                  ##  description=None, # Da estrarre se disponibile
+                 ##   user_id=user.id
+               ## )
+                ##db.session.add(experience)
+
         process.status = ProcessStatus.COMPLETED
+
     except Exception as e:
-        logging.error(f"Error extracting info: {str(e)}")
+        logging.error(f"[Estrazione fallita] {str(e)}")
         process.status = ProcessStatus.ERROR
         process.error_message = str(e)
-        info['error'] = 'Error extracting information'
-    process.end_end_time = datetime.now()    
+        info['error'] = str(e)
+
+    process.end_end_time = datetime.now()
     db.session.add(process)
-    
+    ##db.session.add(skill)
+    db.session.add(user)
+    ##db.session.add(experience)
     db.session.commit()
-    logging.debug(f"Process End: {process.status}")
+
+    logging.debug(f"[Estrazione completata] Process ID: {process.id} - Info: {info}")
     return info

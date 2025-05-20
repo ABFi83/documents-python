@@ -20,6 +20,7 @@ user_schema = UserSchema()
 def get_user():
     user_id = get_jwt_identity()
     user = User.query.filter_by(id=user_id).first()
+    logging.debug(f"User ID: {user}")
     if not user:
         return jsonify({'msg': 'User not found'}), 404
-    return user_schema.jsonify(user)
+    return jsonify(user_schema.dump(user))

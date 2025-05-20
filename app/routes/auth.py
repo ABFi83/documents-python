@@ -19,7 +19,7 @@ user_schema = UserSchema()
 def register():
     data = request.json
     hashed_pw = generate_password_hash(data['password'])
-    user = User(username=data['username'], password=hashed_pw, name=data['name'], surname=data['surname'])
+    user = User(username=data['username'], password=hashed_pw)
     db.session.add(user)
     db.session.commit()
     return user_schema.jsonify(user)

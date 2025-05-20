@@ -17,6 +17,8 @@ class User(db.Model):
     surname= db.Column(db.String(200))
     documents = db.relationship('Document', backref='owner', lazy=True)
     process = db.relationship('Process', backref='user', lazy=True)
+    skill = db.relationship('Skill', backref='user', lazy=True)
+    experience = db.relationship('Experience', backref='user', lazy=True)
 
 class Document(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -34,3 +36,18 @@ class Process(db.Model):
     start_end = db.Column(db.DateTime, default=datetime.utcnow)
     end_end = db.Column(db.DateTime, nullable=True)
     error_message = db.Column(db.String(200), nullable=True)
+
+class Skill(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    level = db.Column(db.String(50), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+class Experience(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    company_name = db.Column(db.String(200), nullable=False)
+    role = db.Column(db.String(100), nullable=False)
+    start_date = db.Column(db.DateTime, nullable=False)
+    end_date = db.Column(db.DateTime, nullable=True)
+    description = db.Column(db.Text, nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)

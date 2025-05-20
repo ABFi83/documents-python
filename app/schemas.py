@@ -1,15 +1,36 @@
 from app import ma
-from app.models import Process, User, Document
+from app.models import Process, User, Skill, Experience, Document
+from marshmallow import Schema, fields
 
-class UserSchema(ma.SQLAlchemyAutoSchema):
-    class Meta:
-        model = User
-        load_instance = True
+class SkillSchema(Schema):
+    id = fields.Int()
+    name = fields.Str()
+    level = fields.Str()
 
-class DocumentSchema(ma.SQLAlchemyAutoSchema):
-    class Meta:
-        model = Document
-        load_instance = True
+class ExperienceSchema(Schema):
+    id = fields.Int()
+    company_name = fields.Str()
+    role = fields.Str()
+    start_date = fields.DateTime(allow_none=True)
+    end_date = fields.DateTime(allow_none=True)
+    description = fields.Str(allow_none=True)
+
+class DocumentSchema(Schema):
+    id = fields.Int()
+    title = fields.Str()
+    meta_data = fields.Str()
+    file_path = fields.Str()
+    version = fields.Int()
+    created_at = fields.DateTime()
+
+class UserSchema(Schema):
+    id = fields.Int()
+    name = fields.Str()
+    surname = fields.Str()
+    username = fields.Str()
+    skill = fields.Nested(SkillSchema, many=True)
+    experience = fields.Nested(ExperienceSchema, many=True)
+    documents = fields.Nested(DocumentSchema, many=True)
 
 class ProcessSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
