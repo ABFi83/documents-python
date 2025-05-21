@@ -11,8 +11,8 @@ class ExperienceSchema(Schema):
     id = fields.Int()
     company_name = fields.Str()
     role = fields.Str()
-    start_date = fields.DateTime(allow_none=True)
-    end_date = fields.DateTime(allow_none=True)
+    start_date = fields.Str(allow_none=True)
+    end_date = fields.Str(allow_none=True)
     description = fields.Str(allow_none=True)
 
 class DocumentSchema(Schema):

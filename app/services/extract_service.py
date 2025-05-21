@@ -1,11 +1,59 @@
 import logging
 from datetime import datetime
+from typing import Dict, List
 from app import db
 from app.models import Process, User, Skill, Experience, ProcessStatus
 import spacy
 import re
 
 nlp = spacy.load("it_core_news_sm")
+
+
+def estrai_esperienze(text: str) -> List[Dict[str, str]]:
+    esperienze = []
+
+    # Isola tutta la sezione ESPERIENZE
+    match = re.search(
+        r'ESPERIENZE[\s\n\r:]*([\s\S]*?)(?:\n[A-Z\s]{3,}|ISTRUZIONE|FORMAZIONE|PROGETTI|COMPETENZE[\s_-]?TECNICHE|$)',
+        text, re.IGNORECASE
+    )
+    if not match:
+        return esperienze
+    
+    esperienze_text = match.group(1).strip()
+
+    # Spezza in blocchi a partire da linee tipo: "GFT Technologies 01/2020 - present"
+    blocchi = re.split(r'\n(?=[A-Z][A-Za-z &.\-]+\s+\d{2}/\d{4}\s*-\s*(?:present|\d{2}/\d{4}))', esperienze_text)
+
+    for blocco in blocchi:
+        if not blocco.strip():
+            continue
+        
+        # Estrae dati dal blocco
+        header_match = re.match(
+            r'([A-Z][A-Za-z &.\-]+)\s+(\d{2}/\d{4})\s*-\s*(present|\d{2}/\d{4})', blocco
+        )
+        if not header_match:
+            continue
+        
+        azienda = header_match.group(1).strip()
+        start_date = header_match.group(2)
+        end_date = header_match.group(3)
+
+        resto = blocco[header_match.end():].strip()
+        lines = resto.splitlines()
+        ruolo = lines[0].strip() if lines else "Ruolo non specificato"
+        descrizione = "\n".join(lines[1:]).strip() if len(lines) > 1 else None
+
+        esperienze.append({
+            "azienda": azienda,
+            "start_date": start_date,
+            "end_date": end_date,
+            "ruolo": ruolo.title(),
+            "description": descrizione
+        })
+
+    return esperienze
 
 def extract_info_from_text(process: Process, text: str):
     info = {
@@ -57,36 +105,23 @@ def extract_info_from_text(process: Process, text: str):
 
                 
         # === 3. Esperienze: estrai solo la sezione che inizia con ESPERIENZE ===
-        esperienze_section = re.search(
-            r'ESPERIENZE[\s\n\r:]*([\s\S]*?)(?:\n[A-Z][A-Z\s]{3,}|ISTRUZIONE|FORMAZIONE|PROGETTI|COMPETENZE|$)',
-            text, re.IGNORECASE
-        )
-        aziende = []
-        ruoli = []
-        if esperienze_section:
-            esperienze_text = esperienze_section.group(1)
-            aziende = re.findall(r'([A-Z][A-Za-z0-9&.\- ]+)', esperienze_text)
-            ruoli = re.findall(r'(Technical Lead|Team Leader|Software Developer|Solution Engineer)', esperienze_text, re.IGNORECASE)
-        else:
-            aziende = [ent.text.strip() for ent in doc.ents if ent.label_ == "ORG"]
-            ruoli = re.findall(r'(Technical Lead|Team Leader|Software Developer|Solution Engineer)', text, re.IGNORECASE)
-        for i in range(min(len(aziende), len(ruoli))):
-            info["esperienze"].append({
-                "azienda": aziende[i],
-                "ruolo": ruoli[i].title()
-            })
-        # Salvataggio esperienze lavorative
-        if info["esperienze"]:
-            for exp in info["esperienze"]:
-                experience = Experience(
-                    company_name=exp["azienda"],
-                    role=exp["ruolo"],
-                    start_date=None,
-                    end_date=None,
-                    description=None,
-                    user_id=user.id
-                )
-                db.session.add(experience) 
+
+        experiences = estrai_esperienze(text)
+
+        for exp in experiences:
+            experience = Experience(
+                company_name=exp['azienda'],
+                role=exp['ruolo'],
+                start_date=exp['start_date'],
+                end_date=exp['end_date'],
+                description=exp['description'],
+                user_id=user.id
+            )
+            db.session.add(experience)
+            print(f"{exp['azienda']} | {exp['ruolo']} | {exp['start_date']} - {exp['end_date']}")
+            print(f"Descrizione: {exp['description']}\n")
+
+
         process.status = ProcessStatus.COMPLETED
     except Exception as e:
         logging.error(f"[Estrazione fallita] {str(e)}")
