@@ -14,6 +14,7 @@ class ExperienceSchema(Schema):
     start_date = fields.Str(allow_none=True)
     end_date = fields.Str(allow_none=True)
     description = fields.Str(allow_none=True)
+    is_current = fields.Boolean(allow_none=True)
 
 class DocumentSchema(Schema):
     id = fields.Int()
@@ -31,6 +32,7 @@ class UserSchema(Schema):
     skill = fields.Nested(SkillSchema, many=True)
     experience = fields.Nested(ExperienceSchema, many=True)
     documents = fields.Nested(DocumentSchema, many=True)
+   
 
 class ProcessSchema(ma.SQLAlchemyAutoSchema):
     class Meta:

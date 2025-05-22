@@ -51,3 +51,4 @@ class Experience(db.Model):
     end_date = db.Column(db.String(30), nullable=True)
     description = db.Column(db.Text, nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    is_current = db.Column(db.Boolean, default=False)
