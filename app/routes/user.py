@@ -4,13 +4,14 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.models import Document, Experience, Skill, User
-from app.schemas import UserSchema
+from app.schemas import ExperienceSchema, UserSchema
 from app import db
 from app.utils.jwt import generate_token
 from flasgger import swag_from
 
 user_bp = Blueprint('user', __name__)
 user_schema = UserSchema()
+
 
 @user_bp.route('', methods=['GET'])
 @jwt_required()  # Added to ensure JWT verification
@@ -21,7 +22,7 @@ user_schema = UserSchema()
 def get_user():
     user_id = get_jwt_identity()
     user = User.query.filter_by(id=user_id).first()
-    logging.debug(f"User ID: {user}")
+   
     if not user:
         return jsonify({'msg': 'User not found'}), 404
     return jsonify(user_schema.dump(user))
@@ -157,39 +158,70 @@ def delete_experience(experience_id):
 def upsert_experience():
     user_id = get_jwt_identity()
     user = User.query.filter_by(id=user_id).first()
-    data = request.json
+
     if not user:
         return jsonify({'msg': 'User not found'}), 404
 
+    data = request.json
     if not data or 'experience' not in data:
-        return jsonify({'msg': 'Bad request: expected {"experience": [...]}' }), 400
+        return jsonify({'msg': 'Bad request: expected {"experience": {...}}'}), 400
 
     try:
-        exp_data = Experience(**data['experience']) 
-        
-        if not exp_data.company_name or not exp_data.role or exp_data.start_date is None:
+        exp_data = data['experience']
+
+        # Validazione dei campi obbligatori
+        if not exp_data.get('company_name') or not exp_data.get('role') or exp_data.get('start_date') is None:
             return jsonify({'msg': 'Bad request: Missing required fields in experience item'}), 400
-      
-        if exp_data.id and exp_data.id != 0:
-            experience = Experience.query.filter_by(id=exp_data.id, user_id=user.id).first()
+
+        # UPDATE
+        if exp_data.get('id'):
+            experience = Experience.query.filter_by(id=exp_data['id'], user_id=user.id).first()
             if not experience:
-                return jsonify({'msg': f'Experience with id {exp_data.id} not found for this user'}), 404
-            experience.company_name = exp_data.company_name
-            experience.role = exp_data.role
-            experience.description = exp_data.description
-            experience.start_date = exp_data.start_date
-            experience.end_date = exp_data.end_date
-            experience.is_current = exp_data.is_current           
+                return jsonify({'msg': f'Experience with id {exp_data["id"]} not found for this user'}), 404
+            experience.company_name = exp_data['company_name']
+            experience.role = exp_data['role']
+            experience.description = exp_data.get('description')
+            experience.start_date = exp_data['start_date']
+            experience.end_date = exp_data.get('end_date')
+            experience.is_current = exp_data.get('is_current')
         else:
-         experience=exp_data
-         experience.user_id = user.id
-         experience.id= None       
-        db.session.add(experience)
+            # CREATE
+            experience = Experience(
+                company_name=exp_data['company_name'],
+                role=exp_data['role'],
+                description=exp_data.get('description'),
+                start_date=exp_data['start_date'],
+                end_date=exp_data.get('end_date'),
+                is_current=exp_data.get('is_current'),
+                user_id=user.id
+            )
+            db.session.add(experience)
+
         db.session.commit()
-        return jsonify(user_schema.dump(user)), 200
+        experience_schema=ExperienceSchema()
+        return jsonify(experience_schema.dump(experience)), 200
+
     except Exception as e:
         db.session.rollback()
         logging.error(f"Error managing user experiences: {e}")
         return jsonify({'msg': 'Internal server error'}), 500
 
 
+
+@user_bp.route('/experience', methods=['GET'])
+@jwt_required()
+def get_experience():
+    user_id = get_jwt_identity()
+    user = User.query.filter_by(id=user_id).first()
+
+    if not user:
+        return jsonify({'msg': 'User not found'}), 404
+
+    experiences = Experience.query.filter_by(user_id=user.id).all()
+
+    if not experiences:
+        return jsonify({'msg': 'No experiences found'}), 404
+    schema = ExperienceSchema(many=True)
+    result = schema.dump(experiences)
+
+    return jsonify(result), 200
