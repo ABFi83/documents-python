@@ -9,37 +9,65 @@ import re
 nlp = spacy.load("it_core_news_sm")
 
 
-def estrai_esperienze(text: str) -> List[Dict[str, str]]:
+def parse_date(date_str):
+    if date_str.lower() == 'present':
+        return None
+    try:
+        return datetime.strptime(date_str, "%m/%Y")
+    except Exception:
+        return None
+
+
+def estrai_esperienze_generico(text):
+    """
+    Estrae esperienze lavorative da un testo in modo generico.
+    """
     esperienze = []
 
-    # Isola tutta la sezione ESPERIENZE
+    # Identifica la sezione delle esperienze
     match = re.search(
-        r'ESPERIENZE[\s\n\r:]*([\s\S]*?)(?:\n[A-Z\s]{3,}|ISTRUZIONE|FORMAZIONE|PROGETTI|COMPETENZE[\s_-]?TECNICHE|$)',
+        r'(ESPERIENZE|WORK EXPERIENCE|EXPERIENCES)[\s\n\r:]*([\s\S]*?)(?=\n[A-Z\s]{3,}|ISTRUZIONE|EDUCATION|FORMAZIONE|$)',
         text, re.IGNORECASE
     )
-    if not match:
-        return esperienze
-    
-    esperienze_text = match.group(1).strip()
+  
+    print("DEBUG: Nessuna sezione ESPERIENZE trovata")
+    # Fallback: cerca pattern di date e aziende direttamente nel testo
+    esperienze_text = "\n".join(re.findall(
+        r'[A-Za-z &.\-\d]+\s+\d{1,2}/\d{4}\s*-\s*(?:present|oggi|\d{1,2}/\d{4})',
+        text, re.IGNORECASE
+    ))
 
-    # Spezza in blocchi a partire da linee tipo: "GFT Technologies 01/2020 - present"
-    blocchi = re.split(r'\n(?=[A-Z][A-Za-z &.\-]+\s+\d{2}/\d{4}\s*-\s*(?:present|\d{2}/\d{4}))', esperienze_text)
+
+    print("DEBUG: esperienze_text =", esperienze_text)
+
+    # Dividi in blocchi basati su pattern di date
+    blocchi = re.split(
+        r'\n(?=[A-Za-z &.\-\d]+\s+\d{1,2}/\d{4}\s*-\s*(?:present|oggi|\d{1,2}/\d{4}))',
+        esperienze_text, flags=re.IGNORECASE
+    )
+    if len(blocchi) == 1:  # Fallback per esperienze su una sola riga
+        blocchi = esperienze_text.splitlines()
 
     for blocco in blocchi:
         if not blocco.strip():
             continue
-        
-        # Estrae dati dal blocco
+
+        print("DEBUG: Blocco =", blocco)
+
+        # Cerca header con azienda, date e ruolo
         header_match = re.match(
-            r'([A-Z][A-Za-z &.\-]+)\s+(\d{2}/\d{4})\s*-\s*(present|\d{2}/\d{4})', blocco
+            r'([\w &.\-\d]+)\s+(\d{1,2}/\d{4})\s*-\s*(present|oggi|\d{1,2}/\d{4})',
+            blocco, re.IGNORECASE
         )
         if not header_match:
+            print("DEBUG: No header match for blocco")
             continue
-        
-        azienda = header_match.group(1).strip()
-        start_date = header_match.group(2)
-        end_date = header_match.group(3)
 
+        azienda = header_match.group(1).strip()
+        start_date = parse_date(header_match.group(2))
+        end_date = parse_date(header_match.group(3))
+
+        # Estrai ruolo e descrizione
         resto = blocco[header_match.end():].strip()
         lines = resto.splitlines()
         ruolo = lines[0].strip() if lines else "Ruolo non specificato"
@@ -105,8 +133,7 @@ def extract_info_from_text(process: Process, text: str):
 
                 
         # === 3. Esperienze: estrai solo la sezione che inizia con ESPERIENZE ===
-
-        experiences = estrai_esperienze(text)
+        experiences = estrai_esperienze_generico(text)
 
         for exp in experiences:
             experience = Experience(
