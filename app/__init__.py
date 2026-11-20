@@ -5,8 +5,6 @@ from flask_marshmallow import Marshmallow
 from flask_jwt_extended import JWTManager
 from flasgger import Swagger
 from flask_cors import CORS
-# Removed SocketIO import
-import os
 
 db = SQLAlchemy()
 ma = Marshmallow()

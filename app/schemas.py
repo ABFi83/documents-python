@@ -1,15 +1,13 @@
 from app import ma
-from app.models import Process, User, Skill, Experience, Document
+from app.models import Process
 from marshmallow import fields
 
-Schema = ma.Schema  # adds .jsonify()
-
-class SkillSchema(Schema):
+class SkillSchema(ma.Schema):
     id = fields.Int()
     name = fields.Str()
     level = fields.Str()
 
-class ExperienceSchema(Schema):
+class ExperienceSchema(ma.Schema):
     id = fields.Int()
     company_name = fields.Str()
     role = fields.Str()
@@ -18,7 +16,7 @@ class ExperienceSchema(Schema):
     description = fields.Str(allow_none=True)
     is_current = fields.Boolean(allow_none=True)
 
-class DocumentSchema(Schema):
+class DocumentSchema(ma.Schema):
     id = fields.Int()
     title = fields.Str()
     meta_data = fields.Str()
@@ -26,7 +24,7 @@ class DocumentSchema(Schema):
     version = fields.Int()
     created_at = fields.DateTime()
 
-class UserSchema(Schema):
+class UserSchema(ma.Schema):
     id = fields.Int()
     name = fields.Str()
     surname = fields.Str()

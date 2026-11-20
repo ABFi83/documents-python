@@ -1,28 +1,21 @@
-import datetime
-from datetime import datetime
-from flask import Blueprint, logging, request, jsonify, send_from_directory, current_app
+from flask import Blueprint, request, jsonify, send_from_directory, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from app.models import Document, Process, ProcessStatus, User, Skill
+from app.models import Document, Process, ProcessStatus
 from app.schemas import DocumentSchema, ProcessSchema
 from flasgger import swag_from
 import os
 import uuid
 import logging
 from werkzeug.utils import safe_join
-import re
 import PyPDF2  # Assicurati di installare questa libreria: pip install PyPDF2
 from threading import Thread
-import spacy
-import re
 from app.services.extract_service import extract_info_from_text
 # Configura il logging
 
 doc_bp = Blueprint('documents', __name__)
-document_schema = DocumentSchema()
 documents_schema = DocumentSchema(many=True)
 process_schema = ProcessSchema()
-nlp = spacy.load("it_core_news_sm")
 
 @doc_bp.route('', methods=['POST'])
 @jwt_required()
