@@ -6,9 +6,7 @@ from app.models import User
 class AuthTestCase(unittest.TestCase):
     def setUp(self):
         """Configura l'applicazione per i test."""
-        self.app = create_app()
-        self.app.config['TESTING'] = True
-        self.app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'  # Database in memoria
+        self.app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:'})  # Database in memoria
         self.client = self.app.test_client()
 
         with self.app.app_context():

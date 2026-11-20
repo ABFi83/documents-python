@@ -13,7 +13,7 @@ ma = Marshmallow()
 jwt = JWTManager()
 
 
-def create_app():
+def create_app(config=None):
 
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -23,6 +23,7 @@ def create_app():
     app.config['UPLOAD_FOLDER'] = 'uploads'
     app.config['JWT_SECRET_KEY'] = 'super-secret-key'
     app.config['SWAGGER'] = {'title': 'Document API', 'uiversion': 3}
+    app.config.update(config or {})
 
     db.init_app(app)
     ma.init_app(app)

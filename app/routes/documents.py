@@ -44,7 +44,7 @@ def upload():
     os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True)
     file.save(path)
 
-    doc = Document(user_id=user_id, title=title, metadata=metadata, file_path=path, version=1)
+    doc = Document(user_id=user_id, title=title, meta_data=metadata, file_path=path, version=1)
     db.session.add(doc)
 
     process= Process(user_id=user_id, status=ProcessStatus.PENDING)
@@ -84,7 +84,7 @@ def get_documents():
 
     if 'metadata' in request.args:
         logging.debug(f"Filtro per metadata: {request.args['metadata']}")
-        query = query.filter(Document.metadata.ilike(f"%{request.args['metadata']}%"))
+        query = query.filter(Document.meta_data.ilike(f"%{request.args['metadata']}%"))
 
     documents = query.all()
     logging.debug(f"Documenti trovati: {documents}")

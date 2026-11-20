@@ -1,6 +1,8 @@
 from app import ma
 from app.models import Process, User, Skill, Experience, Document
-from marshmallow import Schema, fields
+from marshmallow import fields
+
+Schema = ma.Schema  # adds .jsonify()
 
 class SkillSchema(Schema):
     id = fields.Int()
