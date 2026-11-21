@@ -8,4 +8,5 @@ Flasgger==0.9.7.1
 Flask-Cors
 spacy>=3.8,<3.9  # must match it_core_news_sm below
 PyPDF2
+requests
 it_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/it_core_news_sm-3.8.0/it_core_news_sm-3.8.0-py3-none-any.whl

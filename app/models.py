@@ -28,14 +28,18 @@ class Document(db.Model):
     file_path = db.Column(db.String(200))
     version = db.Column(db.Integer, default=1)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    process = db.relationship('Process', backref='document', uselist=False)
 
 class Process(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    document_id = db.Column(db.Integer, db.ForeignKey('document.id'), nullable=True)
     status = db.Column(Enum(ProcessStatus), default=ProcessStatus.PENDING)  # Use Enum for status
     start_date = db.Column(db.DateTime, default=datetime.utcnow)
     end_date = db.Column(db.DateTime, nullable=True)
     error_message = db.Column(db.String(200), nullable=True)
+    # estrazione del CV: {nome, cognome, linguaggi, frameworks, esperienze}; non tocca il profilo utente
+    result = db.Column(db.JSON, nullable=True)
 
 class Skill(db.Model):
     id = db.Column(db.Integer, primary_key=True)

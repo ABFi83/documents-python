@@ -1,4 +1,5 @@
 import logging
+import os
 from flask import Flask, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
@@ -19,6 +20,7 @@ def create_app(config=None):
     CORS(app)  # Enable CORS for the entire application
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
     app.config['UPLOAD_FOLDER'] = 'uploads'
+    app.config['DOCLING_URL'] = os.environ.get('DOCLING_URL', 'http://localhost:5001')
     app.config['JWT_SECRET_KEY'] = 'super-secret-key'
     app.config['SWAGGER'] = {'title': 'Document API', 'uiversion': 3}
     app.config.update(config or {})

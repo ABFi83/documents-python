@@ -1,183 +1,162 @@
 import logging
 from datetime import datetime
-from typing import Dict, List
 from app import db
-from app.models import Process, User, Skill, Experience, ProcessStatus
+from app.models import Process, User, ProcessStatus
 import spacy
+from sqlalchemy import update
 import re
 
 nlp = spacy.load("it_core_news_sm")
 
 
+MESI = {'gen': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'mag': 5, 'giu': 6,
+        'lug': 7, 'ago': 8, 'set': 9, 'ott': 10, 'nov': 11, 'dic': 12}
+
+# 09/2025 | set 2025 | settembre 2025 | 2025
+DATA = r'(?:\d{1,2}/\d{4}|(?:' + '|'.join(MESI) + r')[a-z]*\.?\s+\d{4}|\d{4})'
+FINE = DATA + r'|present|oggi|attuale'
+# "<intestazione> <inizio> - <fine>" su una riga; trattino normale, en o em dash
+HEADER = re.compile(
+    r'^(?P<head>.+?)\s+(?P<start>' + DATA + r')\s*[-–—]\s*(?P<end>' + FINE + r')\s*$',
+    re.IGNORECASE | re.MULTILINE,
+)
+# riga tutta maiuscola = intestazione di sezione (es. "ESPERIENZA PROFESSIONALE")
+SEZIONE = re.compile(r'^[A-ZÀ-Ý][A-ZÀ-Ý &]{3,}$')
+
+
 def parse_date(date_str):
-    if date_str.lower() == 'present':
+    s = date_str.strip().lower()
+    if s in ('present', 'oggi', 'attuale'):
         return None
     try:
-        return datetime.strptime(date_str, "%m/%Y")
+        if re.fullmatch(r'\d{1,2}/\d{4}', s):
+            return datetime.strptime(s, "%m/%Y")
+        if re.fullmatch(r'\d{4}', s):
+            return datetime(int(s), 1, 1)
+        mese, anno = s.split()
+        return datetime(int(anno), MESI[mese[:3]], 1)
     except Exception:
         return None
 
 
 def estrai_esperienze_generico(text):
     """
-    Estrae esperienze lavorative da un testo in modo generico.
+    Estrae le esperienze dalle righe "<intestazione> <data> - <data|oggi>".
+    Intestazione "Ruolo — Azienda" (o "Ruolo - Azienda"), altrimenti solo azienda e ruolo sulla riga dopo.
     """
+    # le date della formazione ("Laurea ..., 2002–2005") non sono esperienze
+    formazione = re.search(r'^(?:FORMAZIONE|ISTRUZIONE|EDUCATION)\b', text, re.MULTILINE)
+    if formazione:
+        text = text[:formazione.start()]
+
+    headers = list(HEADER.finditer(text))
     esperienze = []
+    for i, m in enumerate(headers):
+        fine_blocco = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+        lines = []
+        for line in text[m.end():fine_blocco].strip().splitlines():
+            if SEZIONE.match(line.strip()):
+                break
+            lines.append(line.strip())
 
-    # Identifica la sezione delle esperienze
-    match = re.search(
-        r'(ESPERIENZE|WORK EXPERIENCE|EXPERIENCES)[\s\n\r:]*([\s\S]*?)(?=\n[A-Z\s]{3,}|ISTRUZIONE|EDUCATION|FORMAZIONE|$)',
-        text, re.IGNORECASE
-    )
-  
-    print("DEBUG: Nessuna sezione ESPERIENZE trovata")
-    # Fallback: cerca pattern di date e aziende direttamente nel testo
-    esperienze_text = "\n".join(re.findall(
-        r'[A-Za-z &.\-\d]+\s+\d{1,2}/\d{4}\s*-\s*(?:present|oggi|\d{1,2}/\d{4})',
-        text, re.IGNORECASE
-    ))
-
-
-    print("DEBUG: esperienze_text =", esperienze_text)
-
-    # Dividi in blocchi basati su pattern di date
-    blocchi = re.split(
-        r'\n(?=[A-Za-z &.\-\d]+\s+\d{1,2}/\d{4}\s*-\s*(?:present|oggi|\d{1,2}/\d{4}))',
-        esperienze_text, flags=re.IGNORECASE
-    )
-    if len(blocchi) == 1:  # Fallback per esperienze su una sola riga
-        blocchi = esperienze_text.splitlines()
-
-    for blocco in blocchi:
-        if not blocco.strip():
-            continue
-
-        print("DEBUG: Blocco =", blocco)
-
-        # Cerca header con azienda, date e ruolo
-        header_match = re.match(
-            r'([\w &.\-\d]+)\s+(\d{1,2}/\d{4})\s*-\s*(present|oggi|\d{1,2}/\d{4})',
-            blocco, re.IGNORECASE
-        )
-        if not header_match:
-            print("DEBUG: No header match for blocco")
-            continue
-
-        azienda = header_match.group(1).strip()
-        start_date = parse_date(header_match.group(2))
-        end_date = parse_date(header_match.group(3))
-
-        # Estrai ruolo e descrizione
-        resto = blocco[header_match.end():].strip()
-        lines = resto.splitlines()
-        ruolo = lines[0].strip() if lines else "Ruolo non specificato"
-        descrizione = "\n".join(lines[1:]).strip() if len(lines) > 1 else None
+        head = m.group('head').strip()
+        parti = re.split(r'\s+[—–-]\s+', head, maxsplit=1)
+        if len(parti) == 2:
+            ruolo, azienda = parti
+        else:
+            azienda = head
+            ruolo = lines.pop(0) if lines else "Ruolo non specificato"
 
         esperienze.append({
             "azienda": azienda,
-            "start_date": start_date,
-            "end_date": end_date,
+            "start_date": parse_date(m.group('start')),
+            "end_date": parse_date(m.group('end')),
             "ruolo": ruolo.title(),
-            "description": descrizione
+            "description": "\n".join(lines).strip() or None,
         })
 
     return esperienze
 
-def extract_info_from_text(process: Process, text: str):
-    info = {
-        "nome": None,
-        "cognome": None,
-        "linguaggi": [],
-        "frameworks": [],
-        "esperienze": []
-    }
+
+def estrai_skill(text):
+    """Linguaggi e framework (whitelist) dalla sezione COMPETENZE [TECNICHE]."""
+    section = re.search(
+        r'COMPETENZE(?:[\s_-]?TECNICHE)?[ \t:]*\n([\s\S]*?)(?=^[A-ZÀ-Ý][A-ZÀ-Ý &]{3,}$|ISTRUZIONE|FORMAZIONE|PROGETTI|ESPERIENZ|\Z)',
+        text, re.MULTILINE
+    )
+    if not section:
+        return [], []
+    skills_text = section.group(1)
+    linguaggi = re.findall(r'\b(Java|Python|JavaScript|SQL|C\+\+|C#|PHP|HTML|CSS)\b', skills_text, re.IGNORECASE)
+    frameworks = re.findall(r'\b(Spring Boot|Angular|React|Vue\.js|Django|Laravel|.NET|Node\.js|Google Suite)\b', skills_text, re.IGNORECASE)
+    return list(set(map(str.capitalize, linguaggi))), list(set(map(str.strip, frameworks)))
+
+
+def estrai_nome(text):
+    """Prima entità PER di spaCy -> (nome, cognome)."""
+    for ent in nlp(text).ents:
+        if ent.label_ == "PER":
+            parti = ent.text.strip().split()
+            if parti:
+                return parti[0], " ".join(parti[1:]) or None
+    return None, None
+
+
+def _iso(d):
+    return d.date().isoformat() if d else None
+
+
+def save_process(process_id: int, **values) -> bool:
+    """
+    UPDATE condizionato del processo, nella transazione corrente (non fa commit).
+    False = il processo è stato cancellato (DELETE /documents/<id>) mentre il CV era in analisi:
+    la transazione viene annullata e il chiamante non deve scrivere nient'altro.
+    Su SQLite l'UPDATE prende il lock di scrittura, quindi una DELETE non può infilarsi prima del commit.
+    """
+    values.setdefault("end_date", datetime.utcnow())
+    updated = db.session.execute(
+        update(Process).where(Process.id == process_id).values(**values)
+    ).rowcount
+    if not updated:
+        db.session.rollback()
+        logging.info(f"[Processo {process_id} cancellato durante l'analisi] estrazione scartata")
+    return bool(updated)
+
+
+def extract_info_from_text(process_id: int, text: str):
+    """
+    Estrae nome, skill ed esperienze dal CV e le salva in process.result (storico del CV).
+    Nome e cognome aggiornano anche l'utente; skill ed esperienze non toccano il profilo.
+    Se il processo non esiste più non scrive nulla e restituisce None.
+    """
     try:
-        user = User.query.get(process.user_id)
-        if not user:
-            raise ValueError("Utente non trovato")
-        doc = nlp(text)
-        # === 1. Nome e Cognome (prima entità PERSON) ===
-        for ent in doc.ents:
-            if ent.label_ == "PER":
-                nome_cognome = ent.text.strip().split()
-                if len(nome_cognome) >= 2:
-                    info["nome"] = nome_cognome[0]
-                    info["cognome"] = " ".join(nome_cognome[1:])
-                elif len(nome_cognome) == 1:
-                    info["nome"] = nome_cognome[0]
-                break
-        if info["nome"]:
-            user.name = info["nome"]
-        if info["cognome"]:
-            user.surname = info["cognome"]
-        # === 2. Skill Tecniche: regex su sezione COMPETENZE TECNICHE ===
-        skill_section = re.search(
-            r'COMPETENZE[\s_-]?TECNICHE[\s\n\r:]*([\s\S]*?)(?:\n[A-Z][A-Z\s]{3,}|ISTRUZIONE|FORMAZIONE|PROGETTI|ESPERIENZE|$)',
-            text
-        )
-        if skill_section:
-            skills_text = skill_section.group(1)
-            linguaggi = re.findall(r'\b(Java|Python|JavaScript|SQL|C\+\+|C#|PHP|HTML|CSS)\b', skills_text, re.IGNORECASE)
-            frameworks = re.findall(r'\b(Spring Boot|Angular|React|Vue\.js|Django|Laravel|.NET|Node\.js|Google Suite)\b', skills_text, re.IGNORECASE)
-            info["linguaggi"] = list(set(map(str.capitalize, linguaggi)))
-            info["frameworks"] = list(set(map(str.strip, frameworks)))
-     
-        if info["linguaggi"]:
-            for lang in info["linguaggi"]:
-                skill = Skill(name=lang, level=None, user_id=user.id)
-                db.session.add(skill)
-        if info["frameworks"]:
-            for fw in info["frameworks"]:
-                skill = Skill(name=fw, level=None, user_id=user.id)
-                db.session.add(skill)
-
-                
-        # === 3. Esperienze: estrai solo la sezione che inizia con ESPERIENZE ===
-        experiences = estrai_esperienze_generico(text)
-
-        for exp in experiences:
-            experience = Experience(
-                company_name=exp['azienda'],
-                role=exp['ruolo'],
-                start_date=exp['start_date'],
-                end_date=exp['end_date'],
-                description=exp['description'],
-                user_id=user.id
-            )
-            db.session.add(experience)
-            print(f"{exp['azienda']} | {exp['ruolo']} | {exp['start_date']} - {exp['end_date']}")
-            print(f"Descrizione: {exp['description']}\n")
-
-
-        process.status = ProcessStatus.COMPLETED
+        nome, cognome = estrai_nome(text)
+        linguaggi, frameworks = estrai_skill(text)
+        info = {
+            "nome": nome,
+            "cognome": cognome,
+            "linguaggi": linguaggi,
+            "frameworks": frameworks,
+            "esperienze": [
+                {**e, "start_date": _iso(e["start_date"]), "end_date": _iso(e["end_date"])}
+                for e in estrai_esperienze_generico(text)
+            ],
+        }
     except Exception as e:
-        logging.error(f"[Estrazione fallita] {str(e)}")
-        process.status = ProcessStatus.ERROR
-        process.error_message = str(e)
-        info['error'] = str(e)   
-        try:
-            db.session.add(process)
-            db.session.commit()
-        except Exception as db_exc:
-            logging.error(f"[Salvataggio processo fallito] {str(db_exc)}")
-        return info
-    finally:
-        process.end_end_time = datetime.now()
-        try:
-            db.session.add(user)
-            db.session.commit()
-        except Exception as user_exc:
-            logging.error(f"[Salvataggio user/relazioni fallito] {str(user_exc)}")
-            db.session.rollback()
-            process.status = ProcessStatus.ERROR
-            process.error_message = str(user_exc)
-            info['error'] = str(user_exc)
-        try:
-            logging.debug(f"[Salvataggio processo] ID: {process.id} - Status: {process.status}")
-            db.session.add(process)
-            db.session.commit()
-        except Exception as db_exc:
-            logging.error(f"[Salvataggio processo fallito] {str(db_exc)}")
-            db.session.rollback()
-    logging.debug(f"[Estrazione completata] Process ID: {process.id} - Info: {info}")
+        logging.error(f"[Estrazione fallita] {e}")
+        if not save_process(process_id, status=ProcessStatus.ERROR, error_message=str(e)[:200]):
+            return None
+        db.session.commit()
+        return {"error": str(e)}
+
+    # prima il processo (lock + controllo che esista), poi l'utente, un solo commit
+    if not save_process(process_id, status=ProcessStatus.COMPLETED, result=info):
+        return None
+    user = db.session.get(User, db.session.get(Process, process_id).user_id)
+    if nome:
+        user.name = nome
+    if cognome:
+        user.surname = cognome
+    db.session.commit()
+    logging.debug(f"[Estrazione completata] Process ID: {process_id}")
     return info

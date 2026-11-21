@@ -24,6 +24,17 @@ class DocumentSchema(ma.Schema):
     version = fields.Int()
     created_at = fields.DateTime()
 
+
+class ProcessSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = Process
+        load_instance = True
+        include_fk = True
+
+
+class DocumentHistorySchema(DocumentSchema):
+    process = fields.Nested(ProcessSchema, allow_none=True)
+
 class UserSchema(ma.Schema):
     id = fields.Int()
     name = fields.Str()
@@ -32,9 +43,3 @@ class UserSchema(ma.Schema):
     skill = fields.Nested(SkillSchema, many=True)
     experience = fields.Nested(ExperienceSchema, many=True)
     documents = fields.Nested(DocumentSchema, many=True)
-   
-
-class ProcessSchema(ma.SQLAlchemyAutoSchema):
-    class Meta:
-        model = Process
-        load_instance = True

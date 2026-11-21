@@ -3,7 +3,7 @@ import logging
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from werkzeug.security import generate_password_hash, check_password_hash
-from app.models import Document, Experience, Skill, User
+from app.models import Document, Experience, Process, Skill, User
 from app.schemas import ExperienceSchema, UserSchema
 from app import db
 from app.utils.jwt import generate_token
@@ -41,6 +41,7 @@ def reset():
     if not user:
         return jsonify({'msg': 'User not found'}), 404
     
+    Process.query.filter_by(user_id=user.id).delete()
     Document.query.filter_by(user_id=user.id).delete()
     Skill.query.filter_by(user_id=user.id).delete()
     Experience.query.filter_by(user_id=user.id).delete()
