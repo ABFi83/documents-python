@@ -5,7 +5,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from flasgger import swag_from
 from marshmallow import ValidationError
 from app import db
-from app.models import SearchProfile
+from app.models import SearchProfile, Position
 from app.schemas import SearchProfileSchema
 from app.services.summary_service import somma_estrazioni, documenti_completati
 
@@ -108,6 +108,7 @@ def delete_profile(profile_id):
     profile = _own(profile_id)
     if not profile:
         return jsonify({'msg': 'Profile not found'}), 404
+    Position.query.filter_by(profile_id=profile.id).update({'profile_id': None})
     db.session.delete(profile)
     db.session.commit()
     return jsonify({'msg': 'Profile deleted', 'id': profile_id})

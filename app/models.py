@@ -75,3 +75,49 @@ class SearchProfile(db.Model):
     criteria = db.Column(db.JSON, nullable=False)  # validato da CriteriaSchema
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Position(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    run_id = db.Column(db.Integer, nullable=True)  # null se manuale; FK con SearchRun (Task 10)
+    profile_id = db.Column(db.Integer, db.ForeignKey('search_profile.id'), nullable=True)
+    url = db.Column(db.String(2000))
+    url_norm = db.Column(db.String(2000), index=True)
+    key_norm = db.Column(db.String(500), index=True)
+    titolo = db.Column(db.String(200))
+    azienda = db.Column(db.String(200))
+    luogo = db.Column(db.String(200))
+    modalita = db.Column(db.String(30))
+    descrizione = db.Column(db.Text)
+    requisiti = db.Column(db.Text)
+    data_pubblicazione = db.Column(db.String(30))
+    fonte = db.Column(db.String(200))
+    punteggio_ai = db.Column(db.Integer)  # 0-100
+    motivazione_ai = db.Column(db.Text)
+    skill_presenti = db.Column(db.JSON)
+    skill_mancanti = db.Column(db.JSON)
+    origine = db.Column(db.String(10), nullable=False, default='manuale')  # 'agente' | 'manuale'
+    stato = db.Column(db.String(20), nullable=False, default='da_valutare')
+    interesse = db.Column(db.Integer, nullable=True)  # 1-5
+    motivo = db.Column(db.Text)
+    motivo_tipo = db.Column(db.String(20))  # generico | annuncio | preferenza
+    motivo_preferenza = db.Column(db.String(300))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __init__(self, **kw):
+        from app.services.positions import normalize_url, normalize_key
+        if kw.get('url'):
+            kw.setdefault('url_norm', normalize_url(kw['url']))
+        kw.setdefault('key_norm', normalize_key(kw.get('azienda') or '', kw.get('titolo') or ''))
+        super().__init__(**kw)
+
+
+class PositionEvent(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    position_id = db.Column(db.Integer, db.ForeignKey('position.id'), nullable=False, index=True)
+    da_stato = db.Column(db.String(20))
+    a_stato = db.Column(db.String(20))
+    interesse = db.Column(db.Integer)
+    nota = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
