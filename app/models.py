@@ -121,3 +121,39 @@ class PositionEvent(db.Model):
     interesse = db.Column(db.Integer)
     nota = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class RunStatus(enum.Enum):
+    PENDING = 'pending'
+    RUNNING = 'running'
+    WAITING_INPUT = 'waiting_input'
+    COMPLETED = 'completed'
+    ERROR = 'error'
+    CANCELLED = 'cancelled'
+
+
+ACTIVE_RUN = (RunStatus.PENDING, RunStatus.RUNNING, RunStatus.WAITING_INPUT)
+
+
+def _counters():
+    return {'ricerche': 0, 'pagine_lette': 0, 'salvate': 0,
+            'scartate': {'link_non_verificato': 0, 'doppione': 0, 'gia_valutata': 0}}
+
+
+class SearchRun(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    profile_id = db.Column(db.Integer, db.ForeignKey('search_profile.id'), nullable=True)  # null se profilo cancellato
+    llm_connection_id = db.Column(db.Integer, nullable=True)
+    search_connection_id = db.Column(db.Integer, nullable=True)
+    status = db.Column(Enum(RunStatus), nullable=False, default=RunStatus.PENDING)
+    question = db.Column(db.Text, nullable=True)  # domanda in attesa (WAITING_INPUT)
+    conversation = db.Column(db.JSON, nullable=False, default=list)  # formato del provider, solo append
+    # risultati del turno in pausa: [{"call": {id, name, input}, "content", "is_error"}]; fai_domanda ha content null
+    pending_results = db.Column(db.JSON, nullable=False, default=list)
+    verified_urls = db.Column(db.JSON, nullable=False, default=list)  # URL normalizzati visti in questo run
+    counters = db.Column(db.JSON, nullable=False, default=_counters)
+    steps = db.Column(db.Integer, nullable=False, default=0)
+    error_message = db.Column(db.String(200), nullable=True)
+    start_date = db.Column(db.DateTime, default=datetime.utcnow)
+    end_date = db.Column(db.DateTime, nullable=True)

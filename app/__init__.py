@@ -24,6 +24,11 @@ def create_app(config=None):
     app.config['ENCRYPTION_KEY'] = os.environ.get('ENCRYPTION_KEY')
     app.config['JWT_SECRET_KEY'] = 'super-secret-key'
     app.config['SWAGGER'] = {'title': 'Document API', 'uiversion': 3}
+    # limiti per run dell'agente
+    app.config['AGENT_MAX_STEPS'] = 30
+    app.config['AGENT_MAX_SEARCHES'] = 15
+    app.config['AGENT_MAX_PAGES'] = 25
+    app.config['AGENT_MAX_SAVED'] = 20
     app.config.update(config or {})
 
     db.init_app(app)
@@ -46,6 +51,8 @@ def create_app(config=None):
     from app.routes.settings import settings_bp
     from app.routes.search_profiles import sp_bp
     from app.routes.positions import pos_bp
+    from app.routes.runs import runs_bp
+    app.register_blueprint(runs_bp, url_prefix='/runs')
     app.register_blueprint(pos_bp, url_prefix='/positions')
     app.register_blueprint(sp_bp, url_prefix='/search-profiles')
     app.register_blueprint(settings_bp, url_prefix='/settings')

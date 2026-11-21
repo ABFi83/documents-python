@@ -117,3 +117,18 @@ class PositionSchema(ma.Schema):
     motivo_tipo = fields.Str(allow_none=True)
     motivo_preferenza = fields.Str(allow_none=True)
     created_at = fields.DateTime()
+
+
+class SearchRunSchema(ma.Schema):
+    # niente conversation / pending_results: interni all'agente
+    id = fields.Int()
+    profile_id = fields.Int(allow_none=True)
+    llm_connection_id = fields.Int(allow_none=True)
+    search_connection_id = fields.Int(allow_none=True)
+    status = fields.Function(lambda r: r.status.name)
+    question = fields.Str(allow_none=True)
+    counters = fields.Raw()
+    steps = fields.Int()
+    error_message = fields.Str(allow_none=True)
+    start_date = fields.DateTime()
+    end_date = fields.DateTime(allow_none=True)

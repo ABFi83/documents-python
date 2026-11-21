@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from flasgger import swag_from
 from app import db
-from app.models import AiConnection
+from app.models import ACTIVE_RUN, AiConnection, SearchRun
 from app.schemas import AiConnectionSchema
 from app.services.ai import registry
 from app.services.ai.base import AdapterError
@@ -124,6 +124,11 @@ def delete_connection(conn_id):
     conn = _own(conn_id)
     if not conn:
         return jsonify({'msg': 'Connection not found'}), 404
+    in_uso = SearchRun.query.filter(
+        SearchRun.status.in_(ACTIVE_RUN),
+        (SearchRun.llm_connection_id == conn.id) | (SearchRun.search_connection_id == conn.id)).first()
+    if in_uso:
+        return jsonify({'msg': 'Connessione in uso da una ricerca attiva: attendi la fine o annullala'}), 409
     db.session.delete(conn)
     db.session.commit()
     return jsonify({'msg': 'Connection deleted', 'id': conn_id})

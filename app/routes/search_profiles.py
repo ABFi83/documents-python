@@ -1,16 +1,20 @@
 from datetime import datetime
+from threading import Thread
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from flasgger import swag_from
 from marshmallow import ValidationError
 from app import db
-from app.models import SearchProfile, Position
-from app.schemas import SearchProfileSchema
+from app.models import ACTIVE_RUN, Position, RunStatus, SearchProfile, SearchRun
+from app.schemas import SearchProfileSchema, SearchRunSchema
+from app.services.agent.runner import run_agent
+from app.services.ai.registry import active_connection
 from app.services.summary_service import somma_estrazioni, documenti_completati
 
 sp_bp = Blueprint('search_profiles', __name__)
 schema = SearchProfileSchema()
+run_schema = SearchRunSchema()
 
 
 def _own(profile_id):
@@ -109,6 +113,49 @@ def delete_profile(profile_id):
     if not profile:
         return jsonify({'msg': 'Profile not found'}), 404
     Position.query.filter_by(profile_id=profile.id).update({'profile_id': None})
+    # un run attivo del profilo viene annullato (il thread se ne accorge alla prossima scrittura)
+    SearchRun.query.filter(SearchRun.profile_id == profile.id, SearchRun.status.in_(ACTIVE_RUN)).update(
+        {'status': RunStatus.CANCELLED, 'end_date': datetime.utcnow()})
+    SearchRun.query.filter_by(profile_id=profile.id).update({'profile_id': None})
     db.session.delete(profile)
     db.session.commit()
     return jsonify({'msg': 'Profile deleted', 'id': profile_id})
+
+
+@sp_bp.route('/<int:profile_id>/runs', methods=['POST'])
+@jwt_required()
+@swag_from({'tags': ['Runs'], 'responses': {
+    202: {'description': "Run PENDING creato, l'agente parte in background"},
+    400: {'description': 'Manca una connessione attiva llm o search'},
+    404: {'description': 'Profilo non trovato'},
+    409: {'description': "L'utente ha già un run attivo"}}})
+def start_run(profile_id):
+    profile = _own(profile_id)
+    if not profile:
+        return jsonify({'msg': 'Profile not found'}), 404
+    user_id = profile.user_id
+    llm, search = active_connection(user_id, 'llm'), active_connection(user_id, 'search')
+    if not llm or not search:
+        manca = 'AI (llm)' if not llm else 'di ricerca (search)'
+        return jsonify({'msg': f'Nessuna connessione {manca} attiva: configurala nelle impostazioni'}), 400
+    # ponytail: controllo e insert non atomici, due avvii simultanei possono passare entrambi
+    if SearchRun.query.filter(SearchRun.user_id == user_id, SearchRun.status.in_(ACTIVE_RUN)).first():
+        return jsonify({'msg': 'Hai già una ricerca in corso'}), 409
+    run = SearchRun(user_id=user_id, profile_id=profile.id, llm_connection_id=llm.id,
+                    search_connection_id=search.id, status=RunStatus.PENDING)
+    db.session.add(run)
+    db.session.commit()
+    Thread(target=run_agent, args=(current_app._get_current_object(), run.id)).start()
+    return jsonify(run_schema.dump(run)), 202
+
+
+@sp_bp.route('/<int:profile_id>/runs', methods=['GET'])
+@jwt_required()
+@swag_from({'tags': ['Runs'], 'responses': {200: {'description': 'Run del profilo, più recenti prima'},
+                                            404: {'description': 'Profilo non trovato'}}})
+def list_runs(profile_id):
+    profile = _own(profile_id)
+    if not profile:
+        return jsonify({'msg': 'Profile not found'}), 404
+    runs = SearchRun.query.filter_by(profile_id=profile.id).order_by(SearchRun.id.desc()).all()
+    return jsonify(run_schema.dump(runs, many=True))
