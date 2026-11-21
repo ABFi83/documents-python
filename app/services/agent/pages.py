@@ -100,7 +100,7 @@ def read_page(url: str, max_chars: int = 20000) -> str:
                 charset = v.strip().strip('"\'')
         try:
             testo = buf.decode(charset, errors='replace')
-        except LookupError:
+        except (LookupError, UnicodeError):
             testo = buf.decode('utf-8', errors='replace')
         if ctype != 'text/plain':
             p = _Testo()

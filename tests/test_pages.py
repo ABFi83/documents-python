@@ -64,6 +64,10 @@ class PagesTestCase(unittest.TestCase):
         out, _ = self.run_read('https://example.com/', [resp(body=b'<p>ok</p>', ctype='text/html; charset=bogus')])
         self.assertEqual(out, 'ok')
 
+    def test_idna_charset(self):
+        out, _ = self.run_read('https://example.com/', [resp(body='<p>caffè</p>'.encode(), ctype='text/html; charset=idna')])
+        self.assertEqual(out, 'caffè')
+
     def test_no_charset_defaults_utf8(self):
         out, _ = self.run_read('https://example.com/', [resp(body='<p>perché città</p>'.encode(), ctype='text/html', encoding='ISO-8859-1')])
         self.assertEqual(out, 'perché città')
