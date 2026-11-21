@@ -21,6 +21,7 @@ def create_app(config=None):
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
     app.config['UPLOAD_FOLDER'] = 'uploads'
     app.config['DOCLING_URL'] = os.environ.get('DOCLING_URL', 'http://localhost:5001')
+    app.config['ENCRYPTION_KEY'] = os.environ.get('ENCRYPTION_KEY')
     app.config['JWT_SECRET_KEY'] = 'super-secret-key'
     app.config['SWAGGER'] = {'title': 'Document API', 'uiversion': 3}
     app.config.update(config or {})
@@ -34,7 +35,9 @@ def create_app(config=None):
     def log_request_info():
         logging.info(f"Request: {request.method} {request.url}")
         logging.info(f"Headers: {request.headers}")
-        logging.info(f"Body: {request.get_data()}")
+        # le chiavi API passano da /settings: il body non va mai nei log
+        body = '<omesso>' if request.path.startswith('/settings') else request.get_data()
+        logging.info(f"Body: {body}")
 
     from app.routes.auth import auth_bp
     from app.routes.documents import doc_bp
