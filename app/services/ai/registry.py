@@ -1,11 +1,16 @@
 from cryptography.fernet import InvalidToken
 
 from app.services.ai.base import AdapterError
+from app.services.ai.brave import BraveSearch
+from app.services.ai.claude import ClaudeAdapter
 from app.utils.crypto import decrypt, CryptoNotConfigured
 
-# Riempiti dagli adattatori reali (Task 5); i test aggiungono "fake".
-LLM_PROVIDERS: dict[str, dict] = {}     # {"claude": {"cls", "models", "default_model"}}
-SEARCH_PROVIDERS: dict[str, dict] = {}  # {"brave": {"cls"}}
+# I test aggiungono "fake" (tests/fakes.py).
+LLM_PROVIDERS: dict[str, dict] = {
+    'claude': {'cls': ClaudeAdapter, 'models': ['claude-opus-5-5', 'claude-sonnet-5-5'],
+               'default_model': 'claude-opus-5-5'},
+}
+SEARCH_PROVIDERS: dict[str, dict] = {'brave': {'cls': BraveSearch}}
 
 
 def providers_info() -> dict:
