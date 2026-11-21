@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime
 
-from app.services.extract_service import estrai_esperienze_generico, estrai_skill, parse_date
+from app.services.extract_service import estrai_esperienze_generico, estrai_ruolo_obiettivo, estrai_skill, parse_date
 
 # Testo come esce da PyPDF2 per un CV reale (contatti rimossi)
 CV = """Alessio Baldini
@@ -33,6 +33,12 @@ Laurea Triennale in Informatica, Università degli Studi di Firenze, 2002–2005
 
 
 class ExtractServiceTestCase(unittest.TestCase):
+    def test_ruolo_obiettivo_from_headline(self):
+        self.assertEqual(estrai_ruolo_obiettivo(CV), 'Senior Python Engineer')
+
+    def test_ruolo_obiettivo_missing(self):
+        self.assertIsNone(estrai_ruolo_obiettivo("Mario Rossi\nPROFILO\nqualcosa\n"))
+
     def test_skill_section_without_tecniche(self):
         linguaggi, frameworks = estrai_skill(CV)
         self.assertEqual(sorted(linguaggi), ['Java', 'Python'])

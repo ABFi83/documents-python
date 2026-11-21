@@ -102,6 +102,20 @@ def estrai_nome(text):
     return None, None
 
 
+def estrai_ruolo_obiettivo(text):
+    """Ruolo dalla riga sotto il nome ("Senior Python Engineer · Backend, ..."), None se non c'è."""
+    righe = [r.strip() for r in text.splitlines() if r.strip()]
+    for riga in righe[1:4]:
+        if SEZIONE.match(riga):
+            break  # iniziata una sezione: niente headline
+        # ponytail: contatto = '@' o 6+ cifre in tutto; un'intestazione con tanti numeri sfugge
+        if '@' in riga or len(re.sub(r'\D', '', riga)) >= 6:
+            continue
+        ruolo = re.split(r'·|\||\s-\s|,', riga)[0].strip()
+        return ruolo or None
+    return None
+
+
 def _iso(d):
     return d.date().isoformat() if d else None
 
@@ -133,6 +147,7 @@ def extract_info_from_text(process_id: int, text: str):
         nome, cognome = estrai_nome(text)
         linguaggi, frameworks = estrai_skill(text)
         info = {
+            "ruolo_obiettivo": estrai_ruolo_obiettivo(text),
             "nome": nome,
             "cognome": cognome,
             "linguaggi": linguaggi,
