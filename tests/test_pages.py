@@ -39,6 +39,35 @@ class PagesTestCase(unittest.TestCase):
                 read_page('http://example.com/')
             g.assert_not_called()
 
+    def test_backslash_parser_differential(self):
+        def gai(host, *a, **k):
+            return addr(host) if host[0].isdigit() else addr('93.184.216.34')
+        with patch('socket.getaddrinfo', side_effect=gai), patch('requests.get') as g:
+            with self.assertRaises(PageError):
+                read_page('http://127.0.0.1\@example.com/')
+            g.assert_not_called()
+
+    def test_cgnat_blocked(self):
+        with patch('requests.get') as g:
+            with self.assertRaises(PageError):
+                read_page('http://100.100.100.200/latest/meta-data')
+            g.assert_not_called()
+
+    def test_body_read_error(self):
+        import requests
+        r = resp(body=b'x')
+        r.iter_content.side_effect = requests.exceptions.ChunkedEncodingError()
+        with self.assertRaises(PageError):
+            self.run_read('https://example.com/', [r])
+
+    def test_bogus_charset(self):
+        out, _ = self.run_read('https://example.com/', [resp(body=b'<p>ok</p>', ctype='text/html; charset=bogus')])
+        self.assertEqual(out, 'ok')
+
+    def test_no_charset_defaults_utf8(self):
+        out, _ = self.run_read('https://example.com/', [resp(body='<p>perché città</p>'.encode(), ctype='text/html', encoding='ISO-8859-1')])
+        self.assertEqual(out, 'perché città')
+
     def test_bad_scheme(self):
         with self.assertRaises(PageError):
             read_page('ftp://x')
