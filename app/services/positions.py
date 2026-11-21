@@ -76,3 +76,31 @@ def classify_reason(motivo: str, adapter) -> dict:
     pref = r.get('preferenza')
     pref = pref.strip() if r['tipo'] == 'preferenza' and isinstance(pref, str) and pref.strip() else None
     return {'tipo': r['tipo'], 'preferenza': pref}
+
+
+_OPT = ('luogo', 'modalita', 'descrizione', 'requisiti', 'data_pubblicazione', 'fonte')
+POSITION_SCHEMA = {'type': 'object', 'additionalProperties': False, 'required': ['titolo', 'azienda'],
+                   'properties': {'titolo': {'type': 'string'}, 'azienda': {'type': 'string'},
+                                  **{k: {'type': ['string', 'null']} for k in _OPT}}}
+_MAX = {'titolo': 200, 'azienda': 200, 'luogo': 200, 'modalita': 30, 'data_pubblicazione': 30, 'fonte': 200}
+
+
+def extract_position(adapter, text: str, url: str = '') -> dict:
+    """Estrae i campi di una posizione dal testo di un annuncio. AdapterError se l'AI fallisce;
+    ValueError se manca titolo o azienda."""
+    prompt = ("Estrai i dati di questo annuncio di lavoro. Usa solo ciò che c'è scritto; "
+              "per i campi assenti metti null.\n"
+              + (f"URL: {url}\n" if url else '') + f"Annuncio:\n{text[:20000]}")
+    r = adapter.extract_json(prompt, POSITION_SCHEMA)
+    if not isinstance(r, dict):
+        raise ValueError('risposta non valida')
+    out = {}
+    for k in ('titolo', 'azienda') + _OPT:
+        v = r.get(k)
+        v = v.strip() if isinstance(v, str) else ''
+        out[k] = v[:_MAX[k]] if k in _MAX else v
+        if not out[k] and k not in ('titolo', 'azienda'):
+            out[k] = None
+    if not (out['titolo'] and out['azienda']):
+        raise ValueError('titolo o azienda mancanti')
+    return out
