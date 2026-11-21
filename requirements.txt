@@ -11,4 +11,4 @@ PyPDF2
 requests
 it_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/it_core_news_sm-3.8.0/it_core_news_sm-3.8.0-py3-none-any.whl
 cryptography
-anthropic
+anthropic>=2.12  # usa funzioni recenti dell'SDK (fallback server-side, refusal)

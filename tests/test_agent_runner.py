@@ -1,10 +1,17 @@
+import json
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
 from cryptography.fernet import Fernet
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app import create_app, db
-from app.models import Position, SearchRun, RunStatus
+from app.models import Document, Position, Process, ProcessStatus, SearchRun, RunStatus
+from app.services.agent.runner import ULTIMO_PASSO
+from app.services.extract_service import extract_info_from_text
 from app.services.ai.base import SearchResult
 from tests.fakes import FakeLlm, FakeSearch, register_fakes, reset_fakes
 from tests.test_documents import SyncThread
@@ -186,6 +193,85 @@ class AgentRunnerTestCase(unittest.TestCase):
         FakeLlm.script = [{'tool_calls': [('fai_domanda', {'domanda': '?'})]}]
         self.assertEqual(self.start().status_code, 202)
         self.assertEqual(self.start().status_code, 409)
+
+    def test_run_attivo_unico_per_indice(self):
+        # nessun controllo applicativo prima dell'insert: è l'indice unico parziale a rifiutare il secondo run
+        with self.app.app_context():
+            db.session.add(SearchRun(user_id=1, status=RunStatus.COMPLETED))
+            db.session.add(SearchRun(user_id=1, status=RunStatus.RUNNING))
+            db.session.commit()
+            db.session.add(SearchRun(user_id=1, status=RunStatus.WAITING_INPUT))
+            with self.assertRaises(IntegrityError):
+                db.session.commit()
+            db.session.rollback()
+        r = self.start()
+        self.assertEqual((r.status_code, r.get_json()['msg']), (409, 'Hai già una ricerca in corso'))
+        self.assertEqual(FakeLlm.received, [])
+
+    def test_indice_creato_su_tabella_esistente(self):
+        # DB reale: search_run creata prima dell'indice, create_all non lo aggiunge; create_app sì
+        tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        self.addCleanup(tmp.cleanup)
+        uri = f"sqlite:///{os.path.join(tmp.name, 'db.sqlite')}"
+        app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': uri})
+        with app.app_context():
+            db.session.execute(text('DROP INDEX uq_search_run_attivo'))
+            db.session.commit()
+            db.engine.dispose()
+        app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': uri})
+        with app.app_context():
+            sql = db.session.execute(text(
+                "SELECT sql FROM sqlite_master WHERE name = 'uq_search_run_attivo'")).scalar()
+            db.engine.dispose()
+        self.assertIn("WHERE status IN ('PENDING', 'RUNNING', 'WAITING_INPUT')", sql)
+
+    def test_cv_con_nome_dopo_intestazione_non_arriva_all_ai(self):
+        cv = ("Curriculum Vitae\nMario Rossi\nData Engineer · Cloud\nmario.rossi@example.com\n"
+              "COMPETENZE TECNICHE\nPython\nESPERIENZA PROFESSIONALE\nAcme 01/2020 - oggi\n")
+        with self.app.app_context():
+            d = Document(user_id=1, title='cv.pdf')
+            db.session.add(d)
+            db.session.flush()
+            proc = Process(user_id=1, document_id=d.id, status=ProcessStatus.PENDING)
+            db.session.add(proc)
+            db.session.commit()
+            extract_info_from_text(proc.id, cv)
+            # e un CV estratto prima del fix, con il nome come ruolo obiettivo
+            d2 = Document(user_id=1, title='vecchio.pdf')
+            db.session.add(d2)
+            db.session.flush()
+            db.session.add(Process(user_id=1, document_id=d2.id, status=ProcessStatus.COMPLETED,
+                                   result={'nome': 'Mario', 'cognome': 'Rossi', 'ruolo_obiettivo': 'Rossi'}))
+            db.session.commit()
+        self.start()
+        visto = json.dumps(FakeLlm.received, ensure_ascii=False)
+        self.assertIn('Data Engineer', visto)
+        for x in ('Mario', 'Rossi', 'mario.rossi', '@'):
+            self.assertNotIn(x, visto)
+
+    def test_ultimo_passo_invita_a_chiudere(self):
+        self.app.config['AGENT_MAX_STEPS'] = 3
+        FakeLlm.script = [{'tool_calls': [CERCA]},
+                          {'tool_calls': [CERCA, ('fai_domanda', {'domanda': 'Anche Torino?'})]},
+                          {'tool_calls': [CERCA]}]
+        run = self.run_json(self.start().get_json()['id'])
+        self.assertEqual((run['status'], run['steps'], run['question']), ('COMPLETED', 3, None))
+        self.assertEqual(len(FakeLlm.received), 3)
+        self.assertNotIn(ULTIMO_PASSO, json.dumps(FakeLlm.received[1], ensure_ascii=False))
+        ricerca, domanda = self.last_results()
+        self.assertTrue(domanda['is_error'])  # domanda rifiutata: risposta impossibile entro il limite
+        self.assertIn(ULTIMO_PASSO, domanda['content'])
+
+    def test_risposta_vista_anche_oltre_il_limite(self):
+        FakeLlm.script = [{'tool_calls': [('fai_domanda', {'domanda': 'Anche Torino?'})]}]
+        run_id = self.start().get_json()['id']
+        self.app.config['AGENT_MAX_STEPS'] = 1  # run in pausa già al limite (es. limite abbassato)
+        with self.assertLogs(level='INFO') as logs:
+            self.client.post(f'/runs/{run_id}/answer', headers=self.auth, json={'testo': 'Sì'})
+        self.assertEqual(len(FakeLlm.received), 2)
+        self.assertEqual(self.last_results()[0]['content'], 'Sì')
+        self.assertEqual(self.run_json(run_id)['status'], 'COMPLETED')
+        self.assertFalse([m for m in logs.output if 'scrittura scartata' in m])  # niente flip PENDING alla ripresa
 
     def test_avvio_senza_search_400(self):
         self.client.patch(f'/settings/connections/{self.search_id}', headers=self.auth, json={'active': False})

@@ -313,7 +313,7 @@ Contatori da mostrare durante e dopo la ricerca:
 
 - `counters.ricerche`: ricerche web fatte; `counters.pagine_lette`: pagine lette; `counters.salvate`: posizioni salvate.
 - `counters.scartate`: posizioni che l'agente ha provato a salvare ma il backend ha scartato: `doppione` (già presente), `gia_valutata` (l'utente l'aveva già valutata), `link_non_verificato` (URL non verificato). Utile come riga di dettaglio ("2 salvate, 1 scartata come doppione").
-- `steps`: passi dell'agente (informativo). `start_date` / `end_date` (null finché attivo) per la durata.
+- `steps`: passi dell'agente (informativo). C'è un limite di passi per run: vicino al limite l'agente viene invitato a chiudere con un riepilogo e non fa più domande, quindi un run arriva sempre a `COMPLETED` (mai fermo in `WAITING_INPUT` per il limite). `start_date` / `end_date` (null finché attivo) per la durata.
 
 ### Stato WAITING_INPUT: domanda e risposta
 
@@ -384,7 +384,7 @@ Storico dei run del profilo, più recenti prima (200, lista di run **senza** `po
 {
   "counters": {"pagine_lette": 0, "ricerche": 0, "salvate": 0, "scartate": {"doppione": 0, "gia_valutata": 0, "link_non_verificato": 0}},
   "end_date": "2026-11-21T13:30:20.618440",
-  "error_message": "Servizio AI non raggiungibile",
+  "error_message": "Impossibile contattare l'API Claude",
   "id": 2,
   "llm_connection_id": 1,
   "positions": [],
@@ -636,7 +636,7 @@ Esempio: `{"url": "https://gamma.example.com/jobs/7", "interesse": 4, "stato_ini
 | `200` | la posizione **esistente** con in più `"duplicato": true` (stesso URL, ignorando parametri di tracciamento, o stessa azienda+titolo) | non è un errore: avvisa "Questa posizione c'era già" e apri quella esistente (nessuna nuova creazione) |
 | `422` `{"code": "pagina_non_leggibile", "msg": "Incolla il testo dell'annuncio"}` | la pagina non si è potuta leggere (login richiesto, sito con JavaScript, URL non raggiungibile) | mostra una **textarea** per incollare il testo dell'annuncio e reinvia con `testo` (tenendo `url`, `stato_iniziale`, `interesse`) |
 | `422` `{"code": "estrazione_fallita", "msg": "Non riesco a ricavare titolo e azienda: incolla il testo dell'annuncio"}` | l'AI non ha trovato titolo e azienda nel testo | stesso comportamento: textarea per un testo più completo |
-| `502` `{"code": "ai_non_disponibile", "msg": "Servizio AI non raggiungibile"}` | il servizio AI è giu' o la chiave non funziona | mostra `msg` con "Riprova"; suggerisci di provare il test connessione nelle impostazioni |
+| `502` `{"code": "ai_non_disponibile", "msg": "Chiave API Claude non valida"}` | il servizio AI è giu' o la chiave non funziona; `msg` dice il motivo (es. "Impossibile contattare l'API Claude", "Limite di richieste Claude superato, riprova più tardi") e varia col provider | mostra `msg` così com'è (non tradurlo dal `code`) con "Riprova"; suggerisci di provare il test connessione nelle impostazioni |
 | `400 {"msg": "Serve url o testo"}` | nessuno dei due | validazione del form |
 | `400 {"msg": "Nessuna connessione LLM attiva"}` | manca la connessione llm | rimanda alle impostazioni |
 | `400` altri | `"Body JSON non valido"`, `"url e testo devono essere stringhe"`, `"stato_iniziale non valido"`, `"interesse deve essere un intero tra 1 e 5"` | validazione |
@@ -649,7 +649,7 @@ Esempi reali:
 ```
 
 ```json
-{"code": "ai_non_disponibile", "msg": "Servizio AI non raggiungibile"}
+{"code": "ai_non_disponibile", "msg": "Chiave API Claude non valida"}
 ```
 
 Nello storico della posizione manuale compare un evento iniziale con `da_stato: null` e `nota: "inserimento manuale"`.

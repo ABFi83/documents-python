@@ -63,5 +63,9 @@ def create_app(config=None):
     
     with app.app_context():
         db.create_all()
+        # create_all non aggiunge indici a tabelle già esistenti (niente migrazioni)
+        from app.models import SearchRun
+        for index in SearchRun.__table__.indexes:
+            index.create(db.engine, checkfirst=True)
 
     return app

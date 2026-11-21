@@ -5,12 +5,13 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from flasgger import swag_from
 from marshmallow import ValidationError
+from sqlalchemy.exc import IntegrityError
 from app import db
 from app.models import ACTIVE_RUN, Position, RunStatus, SearchProfile, SearchRun
 from app.schemas import SearchProfileSchema, SearchRunSchema
 from app.services.agent.runner import run_agent
 from app.services.ai.registry import active_connection
-from app.services.summary_service import somma_estrazioni, documenti_completati
+from app.services.summary_service import contiene_nome, documenti_completati, nomi_personali, somma_estrazioni
 
 sp_bp = Blueprint('search_profiles', __name__)
 schema = SearchProfileSchema()
@@ -68,10 +69,13 @@ def create_profile():
 @swag_from({'tags': ['SearchProfiles'],
             'responses': {200: {'description': 'Ruoli e competenze suggeriti dai CV COMPLETED: {ruoli, competenze}'}}})
 def suggestions():
-    estrazioni = [(d.id, d.process.result or {}) for d in documenti_completati(int(get_jwt_identity()))]
+    user_id = int(get_jwt_identity())
+    estrazioni = [(d.id, d.process.result or {}) for d in documenti_completati(user_id)]
     somma = somma_estrazioni(estrazioni)
     ruoli = [r.get('ruolo_obiettivo') for _, r in estrazioni]
     ruoli += [e.get('ruolo') for e in somma['esperienze']]  # più recenti prima
+    nomi = nomi_personali(user_id, estrazioni)
+    ruoli = [r for r in ruoli if not contiene_nome(r, nomi)]
     competenze = [v['nome'] for v in somma['linguaggi'] + somma['frameworks']]
     return jsonify({'ruoli': _unici(ruoli), 'competenze': _unici(competenze)})
 
@@ -138,13 +142,14 @@ def start_run(profile_id):
     if not llm or not search:
         manca = 'AI (llm)' if not llm else 'di ricerca (search)'
         return jsonify({'msg': f'Nessuna connessione {manca} attiva: configurala nelle impostazioni'}), 400
-    # ponytail: controllo e insert non atomici, due avvii simultanei possono passare entrambi
-    if SearchRun.query.filter(SearchRun.user_id == user_id, SearchRun.status.in_(ACTIVE_RUN)).first():
-        return jsonify({'msg': 'Hai già una ricerca in corso'}), 409
     run = SearchRun(user_id=user_id, profile_id=profile.id, llm_connection_id=llm.id,
                     search_connection_id=search.id, status=RunStatus.PENDING)
     db.session.add(run)
-    db.session.commit()
+    try:
+        db.session.commit()  # l'indice unico parziale su search_run(user_id) ammette un solo run attivo
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'msg': 'Hai già una ricerca in corso'}), 409
     Thread(target=run_agent, args=(current_app._get_current_object(), run.id)).start()
     return jsonify(run_schema.dump(run)), 202
 

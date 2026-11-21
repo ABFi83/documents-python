@@ -2,7 +2,7 @@ import re
 from datetime import date
 
 from app.models import Position
-from app.services.summary_service import documenti_completati, somma_estrazioni
+from app.services.summary_service import contiene_nome, documenti_completati, nomi_personali, somma_estrazioni
 
 MAX_POSITIVI, MAX_NEGATIVI, MAX_PREFERENZE = 10, 10, 15
 _PESO_POS = {5: 1.0, 4: 0.6}
@@ -25,12 +25,14 @@ def profile_context(user_id):
     docs = documenti_completati(user_id)
     risultati = [(d.id, d.process.result or {}) for d in docs]
     somma = somma_estrazioni(risultati)
+    nomi = nomi_personali(user_id, risultati)
+    pulito = lambda t: None if contiene_nome(t, nomi) else _scrub(t)
     ruoli = []
     for _, r in risultati:
-        ruolo = _scrub(r.get('ruolo_obiettivo'))
+        ruolo = pulito(r.get('ruolo_obiettivo'))
         if ruolo and ruolo not in ruoli:
             ruoli.append(ruolo)
-    esperienze = [{'ruolo': _scrub(e.get('ruolo')), 'azienda': _scrub(e.get('azienda')),
+    esperienze = [{'ruolo': pulito(e.get('ruolo')), 'azienda': _scrub(e.get('azienda')),
                    'start_date': e.get('start_date'), 'end_date': e.get('end_date')}
                   for e in somma['esperienze']]
     anni = [int(e['start_date'][:4]) for e in esperienze
@@ -64,7 +66,7 @@ def build_feedback(user_id, profile_id):
             if peso:
                 lista.append({'titolo': p.titolo, 'azienda': p.azienda, 'stato': p.stato,
                               'interesse': p.interesse, 'peso': round(peso * molt, 2)})
-        if p.motivo_tipo == 'preferenza' and (p.motivo_preferenza or '').strip():
+        if p.motivo_tipo == 'preferenza' and p.stato != 'rifiutato' and (p.motivo_preferenza or '').strip():
             testo = p.motivo_preferenza.strip()
             v = prefs.setdefault(testo.casefold(), {'testo': testo, 'n': 0, 'stesso': False})
             v['n'] += 1

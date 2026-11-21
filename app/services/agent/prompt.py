@@ -1,4 +1,5 @@
 import json
+from datetime import date
 
 SYSTEM_PROMPT = """Sei un agente che cerca offerte di lavoro per conto di una persona. Ricevi i criteri di ricerca, il suo profilo professionale (senza dati personali) e il riepilogo delle valutazioni passate.
 
@@ -24,10 +25,12 @@ def _sezione(titolo, dati):
     return f"## {titolo}\n{json.dumps(dati, ensure_ascii=False, indent=2, sort_keys=True)}"
 
 
-def initial_message(criteria, profile, feedback):
-    """Messaggio iniziale deterministico (stessi input, stesso testo: prompt caching)."""
+def initial_message(criteria, profile, feedback, oggi=None):
+    """Messaggio iniziale deterministico (stessi input e stesso giorno, stesso testo).
+    La data sta qui e non nel system prompt, che resta identico tra i run (prompt caching)."""
     return "\n\n".join([
         "Cerca posizioni di lavoro adatte.",
+        f"Data di oggi: {(oggi or date.today()).isoformat()}",
         _sezione("Criteri di ricerca", criteria),
         _sezione("Profilo professionale", profile),
         _sezione("Valutazioni passate", feedback),

@@ -19,6 +19,7 @@ from app.services.ai.base import AdapterError, ToolCall
 from app.services.ai.registry import llm_for, search_for
 
 ERRORE_GENERICO = 'Errore interno durante la ricerca'
+ULTIMO_PASSO = 'Ultimo passo: chiudi con un breve riepilogo, senza usare altri strumenti'
 
 
 def save_run(run_id: int, expected, **values) -> bool:
@@ -50,7 +51,9 @@ def run_agent(app, run_id: int) -> None:
     """Target del thread, per l'avvio (PENDING) e per la ripresa dopo una risposta (già RUNNING)."""
     with app.app_context():
         try:
-            if save_run(run_id, RunStatus.PENDING, status=RunStatus.RUNNING):
+            run = db.session.get(SearchRun, run_id)
+            if run and run.status == RunStatus.PENDING and save_run(run_id, RunStatus.PENDING,
+                                                                     status=RunStatus.RUNNING):
                 db.session.commit()
             _loop(app, run_id)
         except AdapterError as e:
@@ -82,11 +85,15 @@ def _loop(app, run_id):
             conversation, [(ToolCall(**p['call']), p['content'], p['is_error']) for p in pending])
     db.session.rollback()  # chiude la lettura: niente transazione aperta durante le chiamate di rete
 
+    max_steps = app.config['AGENT_MAX_STEPS']
+    ripresa = bool(pending)  # dopo una risposta almeno un passo, così il modello la vede
     while True:
-        if steps >= app.config['AGENT_MAX_STEPS']:
+        if steps >= max_steps and not ripresa:
             return _fine(run_id, RunStatus.COMPLETED, conversation=conversation, pending_results=[])
         result = llm.step(conversation, SYSTEM_PROMPT, TOOLS)
         steps += 1
+        ripresa = False
+        ultimo = steps >= max_steps - 1  # il prossimo passo è l'ultimo: niente domande, si chiude
         conversation = result.conversation
         if not result.tool_calls:
             return _fine(run_id, RunStatus.COMPLETED, conversation=conversation, pending_results=[], steps=steps)
@@ -95,7 +102,9 @@ def _loop(app, run_id):
         domanda, results = None, []
         for call in result.tool_calls:
             if call.name == 'fai_domanda':
-                if domanda is None:
+                if ultimo:
+                    results.append((call, 'Niente domande: è il momento di chiudere', True))
+                elif domanda is None:
                     domanda = str(call.input.get('domanda') or '').strip() or '?'
                     results.append((call, None, False))  # il contenuto sarà la risposta
                 else:
@@ -113,6 +122,9 @@ def _loop(app, run_id):
                 db.session.commit()
             return
 
+        if ultimo:
+            c, content, err = results[-1]
+            results[-1] = (c, f'{content}\n\n{ULTIMO_PASSO}', err)
         conversation = llm.add_tool_results(conversation, results)
         if not save_run(run_id, RunStatus.RUNNING, conversation=conversation, pending_results=[], **stato):
             return

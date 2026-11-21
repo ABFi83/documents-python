@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from app import create_app, db
+from app.models import Document, Process, ProcessStatus
 from tests.test_documents import SyncThread
 
 CV_A = ("Mario Rossi\nBackend Developer · Python\nCOMPETENZE\nPython, Django\nESPERIENZA PROFESSIONALE\n"
@@ -96,6 +97,19 @@ class SearchProfilesTestCase(unittest.TestCase):
         # altro utente: niente
         self.assertEqual(self.client.get('/search-profiles/suggestions', headers=self.other).get_json(),
                          {'ruoli': [], 'competenze': []})
+
+    def test_suggestions_senza_nome(self):
+        # CV estratto prima del fix: il "ruolo obiettivo" era il nome
+        with self.app.app_context():
+            d = Document(user_id=1, title='cv')
+            db.session.add(d)
+            db.session.flush()
+            db.session.add(Process(user_id=1, document_id=d.id, status=ProcessStatus.COMPLETED, result={
+                'nome': 'Mario', 'cognome': 'Rossi', 'ruolo_obiettivo': 'Mario Rossi',
+                'esperienze': [{'azienda': 'Acme', 'ruolo': 'Developer', 'start_date': None}]}))
+            db.session.commit()
+        s = self.client.get('/search-profiles/suggestions', headers=self.auth).get_json()
+        self.assertEqual(s['ruoli'], ['Developer'])
 
 
 if __name__ == '__main__':

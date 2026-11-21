@@ -1,3 +1,25 @@
+import re
+
+
+def contiene_nome(testo, nomi):
+    """True se il testo contiene una parola (2+ caratteri) di uno dei nomi, case-insensitive.
+    Parola per parola: spaCy può dare un cognome che sconfina nella riga dopo ("Rossi Via Roma")."""
+    nomi = [p for n in nomi if n for p in n.split() if len(p) >= 2]
+    return bool(testo and nomi and re.search(
+        r'\b(?:' + '|'.join(map(re.escape, nomi)) + r')\b', testo, re.IGNORECASE))
+
+
+def nomi_personali(user_id, estrazioni):
+    """Nome e cognome dell'utente e di ogni CV: un ruolo che li contiene è un dato personale, non un ruolo."""
+    from app import db
+    from app.models import User
+    user = db.session.get(User, user_id)
+    nomi = [user.name, user.surname] if user else []
+    for _, r in estrazioni:
+        nomi += [r.get('nome'), r.get('cognome')]
+    return nomi
+
+
 def documenti_completati(user_id):
     """Document dell'utente con estrazione COMPLETED, dal più recente."""
     from app.models import Document, Process, ProcessStatus

@@ -1,4 +1,5 @@
 import json
+from datetime import date
 import unittest
 
 from app import create_app, db
@@ -48,6 +49,20 @@ class AgentContextTestCase(unittest.TestCase):
         self.assertEqual(p['ruoli_obiettivo'], ['Dev'])
         self.assertGreaterEqual(p['anni_esperienza'], 7)
 
+    def test_ruoli_con_nome_scartati(self):
+        # CV estratti prima del fix: ruolo_obiettivo può essere il nome o un pezzo di esso
+        user = db.session.get(User, 1)
+        user.name, user.surname = 'Anna', 'Bianchi'
+        self.cv({'nome': 'Mario', 'cognome': 'Rossi', 'ruolo_obiettivo': 'Rossi',
+                 'esperienze': [{'azienda': 'Acme', 'ruolo': 'Assistente di Anna Bianchi', 'start_date': None}]})
+        self.cv({'ruolo_obiettivo': 'Mario Rossi', 'esperienze': []})
+        self.cv({'ruolo_obiettivo': 'Data Engineer', 'esperienze': []})
+        p = profile_context(1)
+        s = json.dumps(p)
+        for x in ('Mario', 'Rossi', 'Anna', 'Bianchi'):
+            self.assertNotIn(x, s)
+        self.assertEqual(p['ruoli_obiettivo'], ['Data Engineer'])
+
     def test_profile_empty(self):
         self.cv({'linguaggi': [], 'frameworks': [], 'esperienze': []}, ProcessStatus.ERROR)
         self.assertIsNone(profile_context(1)['anni_esperienza'])
@@ -74,13 +89,16 @@ class AgentContextTestCase(unittest.TestCase):
         self.pos(3, interesse=1, motivo_tipo='preferenza', motivo_preferenza='no turni', profile_id=2)
         self.pos(4, interesse=1, motivo_tipo='generico', motivo_preferenza='ignora')
         self.pos(5, interesse=1, motivo_tipo='annuncio', motivo_preferenza='ignora')
+        self.pos(6, stato='rifiutato', interesse=1, motivo_tipo='preferenza', motivo_preferenza='no Milano')
         pref = {p['testo']: p['peso'] for p in build_feedback(1, 1)['preferenze_da_evitare']}
-        self.assertEqual(pref, {'Niente Viaggi': 1.5, 'no turni': 0.5})
+        self.assertEqual(pref, {'Niente Viaggi': 1.5, 'no turni': 0.5})  # rifiutato: motivo non è una preferenza
 
     def test_prompt(self):
         m = initial_message({'ruoli': ['Dev'], 'max_giorni_annuncio': 7}, {'skill': []}, {'positivi': []})
         self.assertIn('Dev', m)
         self.assertEqual(m, initial_message({'ruoli': ['Dev'], 'max_giorni_annuncio': 7}, {'skill': []}, {'positivi': []}))
+        self.assertIn('Data di oggi: 2026-01-02', initial_message({}, {}, {}, oggi=date(2026, 1, 2)))
+        self.assertNotIn('Data di oggi', SYSTEM_PROMPT)
         for t in ('cerca_web', 'leggi_pagina', 'salva_posizione', 'fai_domanda', 'url_gia_visti', 'max_giorni_annuncio'):
             self.assertIn(t, SYSTEM_PROMPT)
 

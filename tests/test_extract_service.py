@@ -34,10 +34,21 @@ Laurea Triennale in Informatica, Università degli Studi di Firenze, 2002–2005
 
 class ExtractServiceTestCase(unittest.TestCase):
     def test_ruolo_obiettivo_from_headline(self):
-        self.assertEqual(estrai_ruolo_obiettivo(CV), 'Senior Python Engineer')
+        self.assertEqual(estrai_ruolo_obiettivo(CV, 'Alessio', 'Baldini'), 'Senior Python Engineer')
 
     def test_ruolo_obiettivo_missing(self):
-        self.assertIsNone(estrai_ruolo_obiettivo("Mario Rossi\nPROFILO\nqualcosa\n"))
+        self.assertIsNone(estrai_ruolo_obiettivo("Mario Rossi\nPROFILO\nqualcosa\n", 'Mario', 'Rossi'))
+
+    def test_ruolo_obiettivo_mai_dati_personali(self):
+        casi = [("Curriculum Vitae\nMario Rossi\nData Engineer · Cloud\n", 'Mario', 'Rossi', 'Data Engineer'),
+                # spaCy può far sconfinare il cognome nella riga dopo
+                ("Mario\nRossi\nVia Roma 1, Milano\nData Engineer\n", 'Mario', 'Rossi Via Roma 1', 'Data Engineer'),
+                ("Mario Rossi\nVia Roma 1, Milano\nPROFILO\n", 'Mario', 'Rossi', None),
+                ("Mario Rossi\n50100 Firenze\nPROFILO\n", 'Mario', 'Rossi', None),
+                ("Curriculum Vitae\nMario Rossi\n", None, None, None),  # nome non trovato: non si indovina
+                ("Curriculum Vitae\nData Engineer\n", 'Mario', 'Rossi', None)]
+        for testo, nome, cognome, atteso in casi:
+            self.assertEqual(estrai_ruolo_obiettivo(testo, nome, cognome), atteso, testo)
 
     def test_skill_section_without_tecniche(self):
         linguaggi, frameworks = estrai_skill(CV)

@@ -141,6 +141,9 @@ def _counters():
 
 
 class SearchRun(db.Model):
+    # un solo run attivo per utente; Enum salva i nomi. Su un DB già esistente lo crea create_app
+    __table_args__ = (db.Index('uq_search_run_attivo', 'user_id', unique=True, sqlite_where=db.text(
+        'status IN (%s)' % ', '.join(f"'{s.name}'" for s in ACTIVE_RUN))),)
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
     profile_id = db.Column(db.Integer, db.ForeignKey('search_profile.id'), nullable=True)  # null se profilo cancellato

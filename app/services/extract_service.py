@@ -6,6 +6,8 @@ import spacy
 from sqlalchemy import update
 import re
 
+from app.services.summary_service import contiene_nome
+
 nlp = spacy.load("it_core_news_sm")
 
 
@@ -102,14 +104,23 @@ def estrai_nome(text):
     return None, None
 
 
-def estrai_ruolo_obiettivo(text):
-    """Ruolo dalla riga sotto il nome ("Senior Python Engineer · Backend, ..."), None se non c'è."""
+# indirizzo: inizia con Via/Viale/Piazza/... oppure contiene un CAP (5 cifre)
+INDIRIZZO = re.compile(r'^(?:via|viale|piazza|p\.zza|corso|largo|vicolo|strada)\b|\b\d{5}\b', re.IGNORECASE)
+
+
+def estrai_ruolo_obiettivo(text, nome=None, cognome=None):
+    """Ruolo dalla riga sotto il nome ("Senior Python Engineer · Backend, ..."), None se non c'è.
+    Senza nome trovato nel testo non si indovina: qualunque riga potrebbe essere un dato personale."""
     righe = [r.strip() for r in text.splitlines() if r.strip()]
-    for riga in righe[1:4]:
+    inizio = next((i for i, r in enumerate(righe[:5]) if contiene_nome(r, (nome, cognome))), None)
+    if inizio is None:
+        return None
+    for riga in righe[inizio + 1:inizio + 4]:
         if SEZIONE.match(riga):
             break  # iniziata una sezione: niente headline
         # ponytail: contatto = '@' o 6+ cifre in tutto; un'intestazione con tanti numeri sfugge
-        if '@' in riga or len(re.sub(r'\D', '', riga)) >= 6:
+        if ('@' in riga or len(re.sub(r'\D', '', riga)) >= 6 or INDIRIZZO.search(riga)
+                or contiene_nome(riga, (nome, cognome))):
             continue
         ruolo = re.split(r'·|\||\s-\s|,', riga)[0].strip()
         return ruolo or None
@@ -147,7 +158,7 @@ def extract_info_from_text(process_id: int, text: str):
         nome, cognome = estrai_nome(text)
         linguaggi, frameworks = estrai_skill(text)
         info = {
-            "ruolo_obiettivo": estrai_ruolo_obiettivo(text),
+            "ruolo_obiettivo": estrai_ruolo_obiettivo(text, nome, cognome),
             "nome": nome,
             "cognome": cognome,
             "linguaggi": linguaggi,
