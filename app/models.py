@@ -67,3 +67,11 @@ class AiConnection(db.Model):
     key_last4 = db.Column(db.String(4), nullable=False)
     active = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class SearchProfile(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    criteria = db.Column(db.JSON, nullable=False)  # validato da CriteriaSchema
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

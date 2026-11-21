@@ -11,7 +11,7 @@ from werkzeug.utils import safe_join, secure_filename
 from threading import Thread
 from app.services.extract_service import extract_info_from_text, save_process
 from app.services.text_service import pdf_to_text
-from app.services.summary_service import somma_estrazioni
+from app.services.summary_service import somma_estrazioni, documenti_completati
 
 doc_bp = Blueprint('documents', __name__)
 history_schema = DocumentHistorySchema()
@@ -108,9 +108,7 @@ def get_documents():
     'responses': {200: {'description': "Somma delle estrazioni di tutti i CV COMPLETED dell'utente"}}
 })
 def get_summary():
-    documents = (Document.query.join(Process)
-                 .filter(Document.user_id == int(get_jwt_identity()), Process.status == ProcessStatus.COMPLETED)
-                 .order_by(Document.created_at.desc(), Document.id.desc()).all())
+    documents = documenti_completati(int(get_jwt_identity()))
     return jsonify(somma_estrazioni([(d.id, d.process.result or {}) for d in documents]))
 
 

@@ -1,3 +1,11 @@
+def documenti_completati(user_id):
+    """Document dell'utente con estrazione COMPLETED, dal più recente."""
+    from app.models import Document, Process, ProcessStatus
+    return (Document.query.join(Process)
+            .filter(Document.user_id == user_id, Process.status == ProcessStatus.COMPLETED)
+            .order_by(Document.created_at.desc(), Document.id.desc()).all())
+
+
 def _unisci_nomi(estrazioni, chiave):
     """[{nome, document_ids}] senza doppioni (case-insensitive), i più presenti prima."""
     voci = {}

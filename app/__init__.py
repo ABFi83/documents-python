@@ -44,6 +44,8 @@ def create_app(config=None):
     from app.routes.user import user_bp
     from app.routes.process import proc_bp
     from app.routes.settings import settings_bp
+    from app.routes.search_profiles import sp_bp
+    app.register_blueprint(sp_bp, url_prefix='/search-profiles')
     app.register_blueprint(settings_bp, url_prefix='/settings')
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(doc_bp, url_prefix='/documents')
