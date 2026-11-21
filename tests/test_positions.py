@@ -4,7 +4,7 @@ from cryptography.fernet import Fernet
 
 from app import create_app, db
 from app.models import Position, PositionEvent
-from app.services.positions import normalize_url, normalize_key, classify_reason
+from app.services.positions import find_duplicate, normalize_url, normalize_key, classify_reason
 from tests.fakes import FakeLlm, register_fakes, reset_fakes
 
 
@@ -54,6 +54,22 @@ class PositionsTestCase(unittest.TestCase):
         self.assertEqual(normalize_key('ACME S.p.A.', 'Dev  Python'), normalize_key('acme spa', 'dev python'))
         self.assertEqual(normalize_key('Acme', 'Dev-Python'), 'acme|dev python')
 
+    def test_normalize_url_malformed(self):
+        self.assertEqual(normalize_url(' http://[Bad '), 'http://[bad')
+
+    def test_find_duplicate(self):
+        pid = self.make()  # https://x.it/a, Dev, Acme
+        with self.app.app_context():
+            self.assertEqual(find_duplicate(1, 'https://X.it/a/?utm_source=z', 'Altra', 'Altro').id, pid)
+            self.assertEqual(find_duplicate(1, 'https://y.it/b', 'ACME', 'dev').id, pid)
+            self.assertIsNone(find_duplicate(2, 'https://x.it/a', 'Acme', 'Dev'))
+            self.assertIsNone(find_duplicate(1, 'https://y.it/b', 'Acme', 'Altro'))
+            self.assertIsNone(find_duplicate(1, '', '', ''))
+            self.assertIsNone(find_duplicate(1, '', 'Acme', ''))
+            db.session.add(Position(user_id=1, azienda='', titolo=''))
+            db.session.commit()
+            self.assertIsNone(find_duplicate(1, '', '', ''))
+
     def test_classify_fallback(self):
         self.assertEqual(classify_reason('no', None), {'tipo': 'generico', 'preferenza': None})
         self.assertEqual(classify_reason('stipendio troppo basso qui', None)['tipo'], 'annuncio')
@@ -84,6 +100,9 @@ class PositionsTestCase(unittest.TestCase):
         r = self.status(pid, stato='bocciata', motivo='no')
         self.assertEqual(r.status_code, 422)
         self.assertEqual(r.get_json()['code'], 'motivo_generico')
+        with self.app.app_context():
+            self.assertIsNone(db.session.get(Position, pid).motivo)
+            self.assertEqual(PositionEvent.query.filter_by(position_id=pid).count(), 1)  # solo il voto
         self.assertEqual(self.client.get(f'/positions/{pid}', headers=self.auth).get_json()['stato'], 'da_valutare')
         r = self.status(pid, stato='bocciata', motivo='no', conferma_generico=True)
         self.assertEqual(r.status_code, 200)
