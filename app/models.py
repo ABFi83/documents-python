@@ -56,3 +56,14 @@ class Experience(db.Model):
     description = db.Column(db.Text, nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     is_current = db.Column(db.Boolean, default=False)
+
+class AiConnection(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    kind = db.Column(db.String(10), nullable=False)  # 'llm' | 'search'
+    provider = db.Column(db.String(50), nullable=False)
+    model = db.Column(db.String(100), nullable=True)
+    api_key_enc = db.Column(db.Text, nullable=False)  # mai restituita dalle API
+    key_last4 = db.Column(db.String(4), nullable=False)
+    active = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

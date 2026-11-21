@@ -43,3 +43,14 @@ class UserSchema(ma.Schema):
     skill = fields.Nested(SkillSchema, many=True)
     experience = fields.Nested(ExperienceSchema, many=True)
     documents = fields.Nested(DocumentSchema, many=True)
+
+
+class AiConnectionSchema(ma.Schema):
+    # niente api_key_enc: la chiave non esce mai
+    id = fields.Int()
+    kind = fields.Str()
+    provider = fields.Str()
+    model = fields.Str(allow_none=True)
+    key_last4 = fields.Str()
+    active = fields.Boolean()
+    created_at = fields.DateTime()

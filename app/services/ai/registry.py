@@ -40,3 +40,8 @@ def llm_for(conn):
 def search_for(conn):
     cls = _cls(SEARCH_PROVIDERS, conn.provider)
     return cls(_chiave(conn))
+
+
+def active_connection(user_id: int, kind: str):
+    from app.models import AiConnection
+    return AiConnection.query.filter_by(user_id=user_id, kind=kind, active=True).first()
